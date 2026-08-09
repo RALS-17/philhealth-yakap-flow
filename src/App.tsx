@@ -663,7 +663,7 @@ export default function App() {
     <div className="container">
       <header>
         <div className="brand">
-          <img src="/global-care-logo.svg" alt="Global Care Canlubang" />
+          <img src={`${import.meta.env.BASE_URL}global-care-logo.svg`} alt="Global Care Canlubang" />
           <div className="brand-text">
             <strong>GLOBAL CARE</strong>
             <span>Medical Center · Canlubang</span>

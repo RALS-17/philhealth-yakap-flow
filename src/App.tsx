@@ -37,6 +37,7 @@ type DetailView =
   | 'animal-flow'
   | 'rehab-flow'
   | 'dialysis-flow'
+  | 'nbb-flow'
 type ProcessStep = number // 0-based index for interactive process flows
 
 function PathBreadcrumb({ path }: { path: string[] }) {
@@ -83,6 +84,7 @@ export default function App() {
   const [acrPackage, setAcrPackage] = useState<'standard' | 'special' | null>(null)
   const [cancerScreenType, setCancerScreenType] = useState<string | null>(null)
   const [zQualified, setZQualified] = useState<'yes' | 'no' | null>(null)
+  const [nbbAccom, setNbbAccom] = useState<'basic' | 'nonbasic' | null>(null)
 
   const clearSubState = () => {
     setErSub(null)
@@ -97,6 +99,7 @@ export default function App() {
     setGamotDispensed(null)
     setAcrPackage(null)
     setZQualified(null)
+    setNbbAccom(null)
   }
 
   const goBack = () => {
@@ -104,16 +107,20 @@ export default function App() {
 
     // --- Step back inside interactive process flows (stay on current detail) ---
     if (yakapSub === 'gamot' && processStep > 0) {
+      // Clear decision state when backing into a decision step
       if (processStep === 3 && gamotRx) {
         setGamotRx(null)
+        setProcessStep(2)
         return
       }
-      if (processStep === 4 && gamotBranch) {
+      if (processStep === 5 && gamotBranch) {
         setGamotBranch(null)
+        setProcessStep(4)
         return
       }
-      if (processStep === 5 && gamotDispensed) {
+      if (processStep === 7 && gamotDispensed) {
         setGamotDispensed(null)
+        setProcessStep(6)
         return
       }
       setProcessStep((s) => s - 1)
@@ -144,9 +151,15 @@ export default function App() {
     if (
       (detailView === 'animal-flow' ||
         detailView === 'rehab-flow' ||
-        detailView === 'dialysis-flow') &&
+        detailView === 'dialysis-flow' ||
+        detailView === 'nbb-flow') &&
       processStep > 0
     ) {
+      if (detailView === 'nbb-flow' && processStep === 4 && nbbAccom) {
+        setNbbAccom(null)
+        setProcessStep(3)
+        return
+      }
       setProcessStep((s) => s - 1)
       return
     }
@@ -157,6 +170,7 @@ export default function App() {
       setProcessStep(0)
       setAcrPackage(null)
       setZQualified(null)
+      setNbbAccom(null)
       return
     }
 
@@ -258,6 +272,7 @@ export default function App() {
     setGamotDispensed(null)
     setAcrPackage(null)
     setZQualified(null)
+    setNbbAccom(null)
   }
 
   const selectEntry = (type: EntryType) => {
@@ -1213,31 +1228,31 @@ export default function App() {
     )
   }
 
-  // ---------- GAMOT FLOW (interactive process) ----------
+  // ---------- GAMOT FLOW (matches YAKAP Medicine & Laboratory Process Flow) ----------
   const renderGamotFlow = () => {
-    const totalSteps = 7
+    const totalSteps = 8
     const stepTitles = [
       'Start: Patient Arrival & Registration (Walk-in / OPD / ER)',
       'YAKAP Clinic Registration / FPE',
       'Physician Consultation: Existing Private Prescription?',
-      'Prescription / Request Generation → branches',
+      'Consult path → Prescription / Request Generation',
+      'Service branch (54 Gamot · 21 Core · Lab)',
+      'Proceed to Medpure / Hospital Pharmacy / Lab',
       'Fully Dispensed?',
-      'Accounting & Record Updates',
-      'End',
+      'Accounting & Record Updates → End',
     ]
 
     return (
       <div className="screen">
         <PathBreadcrumb path={path} />
         <div className="result-header green">
-          <h2>Gamot Ecosystem</h2>
-          <p>Interactive process · Step {processStep + 1} of {totalSteps}</p>
-          <div className="badge">YAKAP · Gamot</div>
+          <h2>YAKAP Medicine and Laboratory Process Flow</h2>
+          <p>End-to-End · Step {processStep + 1} of {totalSteps}</p>
+          <div className="badge">YAKAP · Gamot / Lab</div>
         </div>
 
         <ProgressDots step={processStep + 1} total={totalSteps} />
 
-        {/* Step progress list */}
         <ul className="flow-steps" style={{ marginBottom: 16 }}>
           {stepTitles.map((t, i) => (
             <li
@@ -1248,22 +1263,27 @@ export default function App() {
                 background: i === processStep ? 'var(--green-light)' : undefined,
               }}
             >
-              <span className="step-num" style={{ background: i <= processStep ? 'var(--green)' : 'var(--border)' }}>
+              <span
+                className="step-num"
+                style={{ background: i <= processStep ? 'var(--green)' : 'var(--border)' }}
+              >
                 {i + 1}
               </span>
               <div>
                 <strong>{t}</strong>
                 {i < processStep && i === 2 && gamotRx && (
                   <div style={{ fontSize: '0.8rem', marginTop: 4 }}>
-                    Selected: {gamotRx === 'new' ? 'No → New Consult' : 'Yes → Existing Private Prescription'}
+                    {gamotRx === 'new'
+                      ? 'NO → New Consult → Initial Check-up → Gamot List / Lab Program Check'
+                      : 'YES → Existing Private Prescription'}
                   </div>
                 )}
-                {i < processStep && i === 3 && gamotBranch && (
-                  <div style={{ fontSize: '0.8rem', marginTop: 4 }}>Selected: {gamotBranch}</div>
+                {i < processStep && i === 4 && gamotBranch && (
+                  <div style={{ fontSize: '0.8rem', marginTop: 4 }}>Branch: {gamotBranch}</div>
                 )}
-                {i < processStep && i === 4 && gamotDispensed && (
+                {i < processStep && i === 6 && gamotDispensed && (
                   <div style={{ fontSize: '0.8rem', marginTop: 4 }}>
-                    Selected: {gamotDispensed === 'full' ? 'Yes → No Further Action' : 'No (Partial)'}
+                    {gamotDispensed === 'full' ? 'YES → No Further Action' : 'NO (Partial) → claim windows apply'}
                   </div>
                 )}
               </div>
@@ -1271,23 +1291,23 @@ export default function App() {
           ))}
         </ul>
 
-        {/* Active step content */}
         <div className="section-block">
           {processStep === 0 && (
             <>
-              <h4>Step 1 — Patient Arrival & Registration</h4>
+              <h4>Start — Patient Arrival & Registration</h4>
               <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
-                Patient arrives as Walk-in, OPD, or ER. Register the encounter to begin the Gamot pathway.
+                Patient arrives as <strong>Walk-in / OPD / ER</strong>. Register the encounter to begin the
+                YAKAP Medicine and Laboratory process.
               </p>
               <button className="btn btn-primary" onClick={() => setProcessStep(1)}>
-                Proceed to YAKAP Clinic Registration →
+                Proceed to YAKAP Clinic Registration / FPE →
               </button>
             </>
           )}
 
           {processStep === 1 && (
             <>
-              <h4>Step 2 — YAKAP Clinic Registration / FPE</h4>
+              <h4>YAKAP Clinic Registration / FPE</h4>
               <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
                 Complete YAKAP clinic registration and First Patient Encounter (FPE) documentation.
               </p>
@@ -1299,9 +1319,9 @@ export default function App() {
 
           {processStep === 2 && (
             <>
-              <h4>Step 3 — Existing Private Prescription?</h4>
+              <h4>Physician Consultation — Existing Private Prescription?</h4>
               <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
-                Does the patient already have a private prescription?
+                Does the patient already have an existing private prescription?
               </p>
               {!gamotRx ? (
                 <div className="card-grid">
@@ -1313,7 +1333,10 @@ export default function App() {
                     }}
                   >
                     <h3>NO</h3>
-                    <p>New Consult → Initial Check-up → YAKAP Gamot List / Lab Program Check</p>
+                    <p>
+                      → New Consult → Initial Check-up → YAKAP Gamot List / Lab Program Check →
+                      Prescription / Request Generation
+                    </p>
                   </button>
                   <button
                     className="choice-card"
@@ -1323,12 +1346,13 @@ export default function App() {
                     }}
                   >
                     <h3>YES</h3>
-                    <p>Existing Private Prescription → Prescription / Request Generation</p>
+                    <p>→ Existing Private Prescription → Prescription / Request Generation</p>
                   </button>
                 </div>
               ) : (
                 <div className="note-box blue">
-                  Selected: {gamotRx === 'new' ? 'No → New Consult path' : 'Yes → Existing Private Prescription'}
+                  Selected:{' '}
+                  {gamotRx === 'new' ? 'NO — New Consult path' : 'YES — Existing Private Prescription'}
                 </div>
               )}
             </>
@@ -1336,9 +1360,50 @@ export default function App() {
 
           {processStep === 3 && (
             <>
-              <h4>Step 4 — Prescription / Request Generation</h4>
+              <h4>
+                {gamotRx === 'new'
+                  ? 'New Consult path → Prescription / Request Generation'
+                  : 'Existing Private Prescription → Prescription / Request Generation'}
+              </h4>
+              {gamotRx === 'new' ? (
+                <ul className="flow-steps" style={{ marginBottom: 12 }}>
+                  <li>
+                    <span className="step-num">A</span> New Consult
+                  </li>
+                  <li>
+                    <span className="step-num">B</span> Initial Check-up
+                  </li>
+                  <li>
+                    <span className="step-num">C</span> YAKAP Gamot List / Lab Program Check
+                  </li>
+                  <li>
+                    <span className="step-num">D</span> Prescription / Request Generation
+                  </li>
+                </ul>
+              ) : (
+                <ul className="flow-steps" style={{ marginBottom: 12 }}>
+                  <li>
+                    <span className="step-num">A</span> Existing Private Prescription
+                  </li>
+                  <li>
+                    <span className="step-num">B</span> Prescription / Request Generation
+                  </li>
+                </ul>
+              )}
               <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
-                Select the prescription branch:
+                Generate the prescription or laboratory request, then choose the service branch.
+              </p>
+              <button className="btn btn-primary" onClick={() => setProcessStep(4)}>
+                Continue to Service Branch →
+              </button>
+            </>
+          )}
+
+          {processStep === 4 && (
+            <>
+              <h4>Service Branch — after Prescription / Request Generation</h4>
+              <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
+                Select the applicable branch from the process flow:
               </p>
               {!gamotBranch ? (
                 <div className="card-grid">
@@ -1346,7 +1411,7 @@ export default function App() {
                     className="choice-card green-card"
                     onClick={() => {
                       setGamotBranch('54 Gamot (Gamot App) → Medpure')
-                      setProcessStep(4)
+                      setProcessStep(5)
                     }}
                   >
                     <h3>54 Gamot</h3>
@@ -1356,7 +1421,7 @@ export default function App() {
                     className="choice-card"
                     onClick={() => {
                       setGamotBranch('21 Core (Epress) → Hospital Pharmacy')
-                      setProcessStep(4)
+                      setProcessStep(5)
                     }}
                   >
                     <h3>21 Core</h3>
@@ -1366,7 +1431,7 @@ export default function App() {
                     className="choice-card"
                     onClick={() => {
                       setGamotBranch('Lab / X-ray / ECG (EKAS) → Lab / Radiology')
-                      setProcessStep(4)
+                      setProcessStep(5)
                     }}
                   >
                     <h3>Lab / X-ray / ECG</h3>
@@ -1374,16 +1439,43 @@ export default function App() {
                   </button>
                 </div>
               ) : (
-                <div className="note-box blue">Selected branch: {gamotBranch}</div>
+                <div className="note-box blue">Selected: {gamotBranch}</div>
               )}
             </>
           )}
 
-          {processStep === 4 && (
+          {processStep === 5 && (
             <>
-              <h4>Step 5 — Fully Dispensed?</h4>
+              <h4>Proceed to service point</h4>
+              <div className="note-box blue" style={{ marginBottom: 12 }}>
+                Selected branch: <strong>{gamotBranch || '—'}</strong>
+              </div>
+              {gamotBranch?.includes('Medpure') && (
+                <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
+                  Patient proceeds to <strong>Medpure</strong> for 54 Gamot dispensing via Gamot App.
+                </p>
+              )}
+              {gamotBranch?.includes('Hospital Pharmacy') && (
+                <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
+                  Patient proceeds to <strong>Hospital Pharmacy</strong> for 21 Core (Epress) medicines.
+                </p>
+              )}
+              {gamotBranch?.includes('Lab') && (
+                <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
+                  Patient proceeds to <strong>Lab / Radiology</strong> for Lab / X-ray / ECG (EKAS).
+                </p>
+              )}
+              <button className="btn btn-primary" onClick={() => setProcessStep(6)}>
+                Continue to Fully Dispensed? →
+              </button>
+            </>
+          )}
+
+          {processStep === 6 && (
+            <>
+              <h4>Fully Dispensed?</h4>
               <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
-                Was the prescription fully dispensed?
+                Was the prescription / request fully dispensed or completed?
               </p>
               {!gamotDispensed ? (
                 <div className="card-grid">
@@ -1391,72 +1483,68 @@ export default function App() {
                     className="choice-card green-card"
                     onClick={() => {
                       setGamotDispensed('full')
-                      setProcessStep(5)
+                      setProcessStep(7)
                     }}
                   >
                     <h3>YES</h3>
-                    <p>No Further Action (proceed to accounting)</p>
+                    <p>→ No Further Action → Accounting & Record Updates</p>
                   </button>
                   <button
                     className="choice-card"
                     onClick={() => {
                       setGamotDispensed('partial')
-                      setProcessStep(5)
+                      setProcessStep(7)
                     }}
                   >
                     <h3>NO (Partial)</h3>
                     <p>
-                      Antibiotics: claim within 2 days from prescription date
+                      <strong>Antibiotics:</strong> Claim within 2 days from prescription date
                       <br />
-                      Maintenance meds: claim within 2 weeks from prescription date
+                      <strong>Maintenance Meds:</strong> Claim within 2 weeks from prescription date
                     </p>
                   </button>
                 </div>
               ) : (
                 <div className="note-box blue">
                   {gamotDispensed === 'full'
-                    ? 'Fully dispensed → No further action needed beyond accounting.'
-                    : 'Partial: Antibiotics claim within 2 days; Maintenance meds claim within 2 weeks.'}
+                    ? 'YES — fully dispensed. No further action beyond accounting.'
+                    : 'NO (Partial) — apply antibiotic (2 days) or maintenance med (2 weeks) claim windows.'}
                 </div>
               )}
             </>
           )}
 
-          {processStep === 5 && (
+          {processStep === 7 && (
             <>
-              <h4>Step 6 — Accounting & Record Updates</h4>
+              <h4>Accounting & Record Updates → End</h4>
+              {gamotDispensed === 'partial' && (
+                <div className="note-box blue" style={{ marginBottom: 12 }}>
+                  Partial dispensing claim windows: Antibiotics within <strong>2 days</strong>; Maintenance
+                  meds within <strong>2 weeks</strong> from prescription date.
+                </div>
+              )}
               <ul className="checklist">
-                <li>Gather Charge Slips (Next Day)</li>
-                <li>Update Monitoring Slip (Annex F)</li>
+                <li>
+                  <strong>Gather Charge Slips</strong> (Next Day)
+                </li>
+                <li>
+                  <strong>Update Monitoring Slip</strong> (Annex F)
+                </li>
               </ul>
-              <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setProcessStep(6)}>
-                Complete → End →
+              <div className="note-box blue" style={{ marginTop: 12, marginBottom: 12 }}>
+                Process complete (End). Continue to Benefit Coordination for billing / claims as needed.
+              </div>
+              <button className="btn btn-primary" onClick={goToCoordination}>
+                Continue to Benefit Coordination →
               </button>
-            </>
-          )}
-
-          {processStep === 6 && (
-            <>
-              <h4>Step 7 — End</h4>
-              <div className="note-box blue">
-                Gamot process complete. Continue to Benefit Coordination for billing / claims, or start a new patient.
-              </div>
-              <div className="nav-row">
-                <button className="btn btn-primary" onClick={goToCoordination}>
-                  Continue to Benefit Coordination →
-                </button>
-              </div>
             </>
           )}
         </div>
 
         <div className="nav-row">
-          <button className="btn btn-outline" onClick={goBack}>← Back</button>
-          {processStep < 6 && processStep !== 2 && processStep !== 3 && processStep !== 4 && (
-            <button className="btn btn-primary" onClick={() => setProcessStep((s) => Math.min(s + 1, 6))}>
-              Next Step →
-            </button>
-          )}
+          <button className="btn btn-outline" onClick={goBack}>
+            ← Back
+          </button>
         </div>
       </div>
     )
@@ -1945,6 +2033,331 @@ export default function App() {
       </div>,
     )
 
+  // ---------- NBB FLOW (Adult PhilHealth No Balance Billing Ecosystem) ----------
+  const renderNbbFlow = () => {
+    const totalSteps = 10
+    const stepTitles = [
+      '1. Patient Entry Gate',
+      '2. PhilHealth Eligibility Gate',
+      '3. Accommodation Gate',
+      '4. Adult Clinical Engine',
+      '5. Ancillary Services',
+      '6. Daily Utilization Review',
+      '7. Discharge Readiness Gate',
+      '8. NBB Billing Control',
+      '9. Claims / eClaims 3.0',
+      '10. Finance + Quality Audit',
+    ]
+
+    return (
+      <div className="screen">
+        <PathBreadcrumb path={path} />
+        <div className="result-header teal">
+          <h2>Adult PhilHealth No Balance Billing Ecosystem</h2>
+          <p>Interactive process · Step {processStep + 1} of {totalSteps}</p>
+          <div className="badge">Indigent · NBB</div>
+        </div>
+
+        <ProgressDots step={processStep + 1} total={totalSteps} />
+
+        <ul className="flow-steps" style={{ marginBottom: 16 }}>
+          {stepTitles.map((t, i) => (
+            <li
+              key={i}
+              style={{
+                opacity: i === processStep ? 1 : i < processStep ? 0.85 : 0.45,
+                borderColor: i === processStep ? 'var(--teal, #00897b)' : undefined,
+                background: i === processStep ? '#e0f2f1' : undefined,
+              }}
+            >
+              <span
+                className="step-num"
+                style={{ background: i <= processStep ? '#00897b' : 'var(--border)' }}
+              >
+                {i + 1}
+              </span>
+              <div>
+                <strong>{t}</strong>
+                {i < processStep && i === 2 && nbbAccom && (
+                  <div style={{ fontSize: '0.8rem', marginTop: 4 }}>
+                    {nbbAccom === 'basic'
+                      ? 'YES Basic/Ward → NBB ACTIVE ZERO CO-PAY'
+                      : 'NO → Non-Basic / Co-Pay Path'}
+                  </div>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="section-block">
+          {processStep === 0 && (
+            <>
+              <h4>1. Patient Entry Gate</h4>
+              <p style={{ fontSize: '0.88rem', marginBottom: 10 }}>
+                Adult patient enters via <strong>ER</strong>, <strong>Direct Admission</strong>, or{' '}
+                <strong>Transfer-In</strong>.
+              </p>
+              <ul className="flow-steps" style={{ marginBottom: 12 }}>
+                <li>
+                  <span className="step-num">A</span> Triage + Stabilization
+                </li>
+                <li>
+                  <span className="step-num">B</span> Physician Assessment
+                </li>
+                <li>
+                  <span className="step-num">C</span> Inpatient Admission Needed?
+                </li>
+              </ul>
+              <div className="card-grid" style={{ marginBottom: 12 }}>
+                <button
+                  className="choice-card"
+                  onClick={() => {
+                    setDetailView('main')
+                    setErSub('non-admissible')
+                    setProcessStep(0)
+                    setPath((p) => [...p.slice(0, 4), 'Non-Admissible (OECB)'])
+                  }}
+                >
+                  <h3>NO</h3>
+                  <p>→ Outpatient / OECB if applicable</p>
+                </button>
+                <button
+                  className="choice-card green-card"
+                  onClick={() => setProcessStep(1)}
+                >
+                  <h3>YES</h3>
+                  <p>→ Admission Order → continue NBB path</p>
+                </button>
+              </div>
+            </>
+          )}
+
+          {processStep === 1 && (
+            <>
+              <h4>2. PhilHealth Eligibility Gate</h4>
+              <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
+                Verify member status and PhilHealth eligibility for NBB (indigent / sponsored /
+                applicable membership category).
+              </p>
+              <ul className="checklist">
+                <li>Verify member / eligibility (PIN, membership type, benefit availability)</li>
+                <li>Confirm patient qualifies for No Balance Billing rules</li>
+              </ul>
+              <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setProcessStep(2)}>
+                Proceed to Accommodation Gate →
+              </button>
+            </>
+          )}
+
+          {processStep === 2 && (
+            <>
+              <h4>3. Accommodation Gate — Basic / Ward?</h4>
+              <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
+                NBB applies when the patient is admitted to <strong>basic / ward</strong> accommodation.
+              </p>
+              {!nbbAccom ? (
+                <div className="card-grid">
+                  <button
+                    className="choice-card green-card"
+                    onClick={() => {
+                      setNbbAccom('basic')
+                      setProcessStep(3)
+                    }}
+                  >
+                    <h3>YES — Basic / Ward</h3>
+                    <p>→ NBB ACTIVE · ZERO CO-PAY</p>
+                  </button>
+                  <button
+                    className="choice-card"
+                    onClick={() => {
+                      setNbbAccom('nonbasic')
+                      setProcessStep(3)
+                    }}
+                  >
+                    <h3>NO — Non-Basic</h3>
+                    <p>→ Non-Basic / Co-Pay Path</p>
+                  </button>
+                </div>
+              ) : (
+                <div className="note-box blue">
+                  Selected:{' '}
+                  {nbbAccom === 'basic'
+                    ? 'Basic / Ward → NBB ACTIVE ZERO CO-PAY'
+                    : 'Non-Basic / Co-Pay Path'}
+                </div>
+              )}
+            </>
+          )}
+
+          {processStep === 3 && (
+            <>
+              <h4>4. Adult Clinical Engine</h4>
+              {nbbAccom === 'basic' && (
+                <div className="note-box blue" style={{ marginBottom: 12 }}>
+                  <strong>NBB ACTIVE · ZERO CO-PAY</strong> — continue clinical management under NBB
+                  rules.
+                </div>
+              )}
+              {nbbAccom === 'nonbasic' && (
+                <div className="note-box blue" style={{ marginBottom: 12 }}>
+                  Non-basic accommodation follows the <strong>co-pay path</strong> (NBB may not fully
+                  apply).
+                </div>
+              )}
+              <p style={{ fontSize: '0.88rem', marginBottom: 10 }}>Service lines:</p>
+              <ul className="checklist">
+                <li>Internal Medicine</li>
+                <li>Surgery</li>
+                <li>Specialty Care</li>
+              </ul>
+              <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setProcessStep(4)}>
+                Proceed to Ancillary Services →
+              </button>
+            </>
+          )}
+
+          {processStep === 4 && (
+            <>
+              <h4>5. Ancillary Services</h4>
+              <ul className="checklist">
+                <li>Pharmacy</li>
+                <li>Lab</li>
+                <li>Radiology</li>
+                <li>Blood Bank</li>
+                <li>Respiratory / Other Services</li>
+              </ul>
+              <div className="note-box blue" style={{ marginTop: 12, marginBottom: 12 }}>
+                <strong>NO DIRECT NBB COLLECTION</strong> at ancillary service points for covered NBB
+                patients.
+              </div>
+              <button className="btn btn-primary" onClick={() => setProcessStep(5)}>
+                Proceed to Daily Utilization Review →
+              </button>
+            </>
+          )}
+
+          {processStep === 5 && (
+            <>
+              <h4>6. Daily Utilization Review</h4>
+              <ul className="checklist">
+                <li>Medical necessity</li>
+                <li>Comorbidity review</li>
+                <li>Antibiotic stewardship</li>
+                <li>LOS review</li>
+                <li>Specialist need</li>
+                <li>ICU escalation</li>
+              </ul>
+              <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setProcessStep(6)}>
+                Proceed to Discharge Readiness Gate →
+              </button>
+            </>
+          )}
+
+          {processStep === 6 && (
+            <>
+              <h4>7. Discharge Readiness Gate</h4>
+              <ul className="flow-steps" style={{ marginBottom: 12 }}>
+                <li>
+                  <span className="step-num">A</span> Final Diagnosis + Procedures
+                </li>
+                <li>
+                  <span className="step-num">B</span> ICD-10 / RVS Coding
+                </li>
+              </ul>
+              <button className="btn btn-primary" onClick={() => setProcessStep(7)}>
+                Proceed to NBB Billing Control →
+              </button>
+            </>
+          )}
+
+          {processStep === 7 && (
+            <>
+              <h4>8. NBB Billing Control</h4>
+              <ul className="flow-steps" style={{ marginBottom: 12 }}>
+                <li>
+                  <span className="step-num">A</span> Apply applicable PhilHealth benefit
+                </li>
+                <li>
+                  <span className="step-num">B</span> NBB Reconciliation
+                </li>
+                <li>
+                  <span className="step-num">C</span> Covered patient payable = <strong>₱0</strong>
+                </li>
+                <li>
+                  <span className="step-num">D</span> Discharge
+                </li>
+              </ul>
+              <div className="note-box blue" style={{ marginBottom: 12 }}>
+                For qualified NBB patients in basic accommodation, covered services should result in{' '}
+                <strong>₱0 patient payable</strong> after PhilHealth benefit application.
+              </div>
+              <button className="btn btn-primary" onClick={() => setProcessStep(8)}>
+                Proceed to Claims / eClaims →
+              </button>
+            </>
+          )}
+
+          {processStep === 8 && (
+            <>
+              <h4>9. Claims / eClaims 3.0</h4>
+              <ul className="checklist">
+                <li>CF4 + CF5</li>
+                <li>eSOA</li>
+                <li>PhilHealth adjudication</li>
+              </ul>
+              <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setProcessStep(9)}>
+                Proceed to Finance + Quality Audit →
+              </button>
+            </>
+          )}
+
+          {processStep === 9 && (
+            <>
+              <h4>10. Finance + Quality Audit</h4>
+              <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
+                Close the loop with finance and quality review, then feed results into the KPI /
+                Management Loop.
+              </p>
+              <ul className="checklist">
+                <li>Finance + Quality Audit</li>
+                <li>KPI / Management Loop</li>
+              </ul>
+              <div className="note-box blue" style={{ marginTop: 12, marginBottom: 12 }}>
+                NBB ecosystem process complete.
+              </div>
+              <button className="btn btn-primary" onClick={goToCoordination}>
+                Continue to Benefit Coordination →
+              </button>
+            </>
+          )}
+        </div>
+
+        <div className="nav-row">
+          <button
+            className="btn btn-outline"
+            onClick={() => {
+              if (processStep > 0) {
+                if (processStep === 3 && nbbAccom) {
+                  setNbbAccom(null)
+                  setProcessStep(2)
+                } else {
+                  setProcessStep((s) => s - 1)
+                }
+              } else {
+                setDetailView('main')
+                setProcessStep(0)
+                setNbbAccom(null)
+              }
+            }}
+          >
+            ← Back
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   // ---------- BENEFIT DETAIL (SCREEN 5) ----------
   const renderBenefitDetail = () => {
     if (detailView === 'oecb-tables') return renderOecbTables()
@@ -1953,6 +2366,7 @@ export default function App() {
     if (detailView === 'animal-flow') return renderAnimalFlow()
     if (detailView === 'rehab-flow') return renderRehabFlow()
     if (detailView === 'dialysis-flow') return renderDialysisFlow()
+    if (detailView === 'nbb-flow') return renderNbbFlow()
     if (yakapSub === 'cancer' && cancerStep) return renderCancerFlow()
     if (yakapSub === 'gamot') return renderGamotFlow()
 
@@ -1968,20 +2382,47 @@ export default function App() {
           </div>
           <div className="section-label">PhilHealth benefits to apply</div>
           <div className="component-list">
-            <div className="component-card">
+            <button
+              type="button"
+              className="component-card"
+              style={{ width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}
+              onClick={() => {
+                setProcessStep(0)
+                setAcrPackage(null)
+                setDetailView('acr-flow')
+              }}
+            >
               <div className="comp-icon">📄</div>
               <div>
-                <h4>1. Paying: ACR</h4>
-                <p>All Case Rate based on final diagnosis and procedures.</p>
+                <h4>1. Paying: ACR →</h4>
+                <p>All Case Rate based on final diagnosis and procedures. Click to open ACR flow.</p>
               </div>
-            </div>
-            <div className="component-card">
+            </button>
+            <button
+              type="button"
+              className="component-card"
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                border: '2px solid #00897b',
+              }}
+              onClick={() => {
+                setProcessStep(0)
+                setNbbAccom(null)
+                setDetailView('nbb-flow')
+              }}
+            >
               <div className="comp-icon">🏥</div>
               <div>
-                <h4>2. Indigent: NBB</h4>
-                <p>No Balance Billing for qualified indigent members in basic accommodation.</p>
+                <h4>2. Indigent: NBB →</h4>
+                <p>
+                  No Balance Billing for qualified indigent members in basic accommodation. Click to
+                  open Adult NBB Ecosystem.
+                </p>
               </div>
-            </div>
+            </button>
             <div className="component-card">
               <div className="comp-icon">📦</div>
               <div>
@@ -1991,7 +2432,9 @@ export default function App() {
             </div>
           </div>
           <div className="nav-row">
-            <button className="btn btn-outline" onClick={goBack}>← Back</button>
+            <button className="btn btn-outline" onClick={goBack}>
+              ← Back
+            </button>
             <button
               className="btn btn-primary"
               onClick={() => {
@@ -2001,6 +2444,16 @@ export default function App() {
               }}
             >
               View Inpatient ACR Flow →
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setProcessStep(0)
+                setNbbAccom(null)
+                setDetailView('nbb-flow')
+              }}
+            >
+              View NBB Ecosystem →
             </button>
             <button className="btn btn-primary" onClick={goToCoordination}>
               Continue to Benefit Coordination →

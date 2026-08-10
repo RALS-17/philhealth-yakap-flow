@@ -26,7 +26,7 @@ type CancerStep =
   | 'result-normal'
   | 'result-abnormal'
   | 'confirmed'
-type OecbTab = 'overview' | 'groups' | 'covered' | 'pathways'
+type OecbTab = 'overview' | 'groups' | 'covered' | 'pathways' | 'exclusions'
 type DetailView =
   | 'main'
   | 'oecb-tables'
@@ -639,7 +639,7 @@ export default function App() {
       </div>
 
       <div className="tab-row">
-        {(['overview', 'groups', 'covered', 'pathways'] as OecbTab[]).map((t) => (
+        {(['overview', 'groups', 'covered', 'pathways', 'exclusions'] as OecbTab[]).map((t) => (
           <button
             key={t}
             className={`tab-btn ${oecbTab === t ? 'active' : ''}`}
@@ -649,6 +649,7 @@ export default function App() {
             {t === 'groups' && 'Clinical Groups'}
             {t === 'covered' && 'Covered Services'}
             {t === 'pathways' && 'Sample Pathways'}
+            {t === 'exclusions' && 'Exclusions'}
           </button>
         ))}
       </div>
@@ -672,6 +673,54 @@ export default function App() {
             OECB may cover a qualifying assessment that resolves without admission. Most major
             conditions (true stroke, AMI, sepsis with organ dysfunction, major trauma, etc.)
             require admission or transfer.
+          </div>
+          <button
+            type="button"
+            className="btn btn-outline"
+            style={{ marginTop: 12 }}
+            onClick={() => setOecbTab('exclusions')}
+          >
+            View OECB Exclusions (Watch Out) →
+          </button>
+        </div>
+      )}
+
+      {oecbTab === 'exclusions' && (
+        <div className="section-block">
+          <h4 style={{ color: '#b71c1c' }}>WATCH OUT: Exclusion for OECB</h4>
+          <p style={{ fontSize: '0.9rem', marginBottom: 12 }}>
+            OECB should generally <strong>not</strong> be used when:
+          </p>
+          <ul className="checklist">
+            <li>An admission order has been issued</li>
+            <li>
+              The patient remains in the ED beyond 24 hours because a necessary disposition was not
+              completed
+            </li>
+            <li>
+              The primary service is an outpatient or inpatient procedure with an existing case rate
+            </li>
+            <li>
+              Another PhilHealth package, such as the Animal Bite Treatment Package, properly governs
+              the episode
+            </li>
+            <li>
+              The claim seeks payment for prehospital or home services under the facility-based
+              component
+            </li>
+            <li>The claimed item is not on the current EECL</li>
+            <li>
+              Documentation cannot demonstrate that the service was clinically indicated and actually
+              provided
+            </li>
+            <li>
+              OECB and the resuscitation benefit are being filed for the same episode contrary to the
+              no-double-filing rule
+            </li>
+          </ul>
+          <div className="note-box blue" style={{ marginTop: 12 }}>
+            Always verify eligibility, EECL coverage, disposition timing (within 24 hours), and that
+            no other package already governs the episode before filing OECB.
           </div>
         </div>
       )}
@@ -1120,7 +1169,24 @@ export default function App() {
           </div>
           <div className="nav-row">
             <button className="btn btn-outline" onClick={goBack}>← Back</button>
-            <button className="btn btn-primary" onClick={goToCoordination}>Continue to Benefit Coordination →</button>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setBenefitType('zbenefit')
+                setYakapSub(null)
+                setCancerStep(null)
+                setProcessStep(0)
+                setZQualified(null)
+                setDetailView('z-flow')
+                setScreen(5)
+                setPath((p) => [...p, 'Z Benefits Process'])
+              }}
+            >
+              Open Full Z Benefits Process →
+            </button>
+            <button className="btn btn-primary" onClick={goToCoordination}>
+              Continue to Benefit Coordination →
+            </button>
           </div>
         </div>
       )
@@ -1982,10 +2048,39 @@ export default function App() {
             Based on PhilHealth’s list of emergency symptoms / 27 core presentations. Patient is
             treated and discharged within 24 hours with OECB signs and symptoms.
           </div>
+          <div
+            className="note-box"
+            style={{
+              marginTop: 10,
+              background: '#fff8e1',
+              borderColor: '#f9a825',
+              color: '#5d4037',
+            }}
+          >
+            <strong>WATCH OUT:</strong> Do not use OECB if an admission order was issued, stay exceeds
+            24 hours without disposition, another package (e.g. Animal Bite) governs the episode, the
+            item is not on the EECL, or OECB is double-filed with resuscitation for the same episode.
+            See full exclusions in OECB Tables → Exclusions.
+          </div>
           <div className="nav-row">
             <button className="btn btn-outline" onClick={goBack}>← Back</button>
-            <button className="btn btn-primary" onClick={() => setDetailView('oecb-tables')}>
-              View OECB Tables (Groups · Covered · Pathways) →
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setOecbTab('exclusions')
+                setDetailView('oecb-tables')
+              }}
+            >
+              View OECB Exclusions →
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setOecbTab('overview')
+                setDetailView('oecb-tables')
+              }}
+            >
+              View OECB Tables →
             </button>
             <button className="btn btn-primary" onClick={goToCoordination}>
               Continue to Benefit Coordination →
@@ -2017,6 +2112,7 @@ export default function App() {
         {
           title: 'First Patient Encounter / Risk Assessment',
           body: 'Complete first encounter documentation and risk assessment (including cancer risk profiling when indicated).',
+          riskLink: true,
         },
         {
           title: 'Consultation → Labs · Gamot · Cancer Screening',
@@ -2084,6 +2180,28 @@ export default function App() {
               </div>
             )}
 
+            {current.riskLink && (
+              <button
+                type="button"
+                className="choice-card"
+                style={{ marginBottom: 12, width: '100%' }}
+                onClick={() => {
+                  setYakapSub('cancer')
+                  setCancerStep('risk')
+                  setCancerScreenType(null)
+                  setProcessStep(0)
+                  setPath((p) => {
+                    const base = p.slice(0, 4)
+                    return [...base, 'YAKAP Cancer Screening']
+                  })
+                }}
+              >
+                <div className="icon">🎗️</div>
+                <h3>Open Cancer Screening Pathway →</h3>
+                <p>If cancer risk is identified during risk assessment</p>
+              </button>
+            )}
+
             {current.services && (
               <div className="component-list" style={{ marginBottom: 12 }}>
                 <div className="component-card green">
@@ -2100,20 +2218,61 @@ export default function App() {
                     <p>CBC, urinalysis, FBS, lipid profile, chest X-ray, and other YAKAP labs.</p>
                   </div>
                 </div>
-                <div className="component-card green">
+                <button
+                  type="button"
+                  className="component-card green"
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    border: '2px solid var(--green)',
+                    fontFamily: 'inherit',
+                  }}
+                  onClick={() => {
+                    setYakapSub('gamot')
+                    setProcessStep(0)
+                    setGamotRx(null)
+                    setGamotBranch(null)
+                    setGamotDispensed(null)
+                    setPath((p) => {
+                      const base = p.slice(0, 4)
+                      return [...base, 'Gamot Ecosystem']
+                    })
+                  }}
+                >
                   <div className="comp-icon">💊</div>
                   <div>
-                    <h4>Gamot (Medicines)</h4>
-                    <p>Essential outpatient medicines under the GAMOT benefit.</p>
+                    <h4>Gamot (Medicines) →</h4>
+                    <p>Essential outpatient medicines under the GAMOT benefit. Click to open Gamot pathway.</p>
                   </div>
-                </div>
-                <div className="component-card">
+                </button>
+                <button
+                  type="button"
+                  className="component-card"
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    border: '2px solid var(--blue)',
+                    fontFamily: 'inherit',
+                  }}
+                  onClick={() => {
+                    setYakapSub('cancer')
+                    setCancerStep('risk')
+                    setCancerScreenType(null)
+                    setProcessStep(0)
+                    setPath((p) => {
+                      const base = p.slice(0, 4)
+                      return [...base, 'YAKAP Cancer Screening']
+                    })
+                  }}
+                >
                   <div className="comp-icon">🎗️</div>
                   <div>
-                    <h4>Cancer Screening</h4>
-                    <p>Risk profiling and appropriate screen when indicated (separate pathway).</p>
+                    <h4>Cancer Screening →</h4>
+                    <p>Risk profiling and appropriate screen when indicated. Click to open Cancer Screening pathway.</p>
                   </div>
-                </div>
+                </button>
               </div>
             )}
 
@@ -2441,21 +2600,60 @@ export default function App() {
         Post-Discharge Continuity
       </div>
       <div className="card-grid">
-        <div className="choice-card green-card" style={{ cursor: 'default' }}>
+        <button
+          type="button"
+          className="choice-card green-card"
+          onClick={() => {
+            setBenefitType('yakap')
+            setYakapSub('standard')
+            setProcessStep(0)
+            setDetailView('main')
+            setCancerStep(null)
+            setScreen(5)
+            setPath(['Start', 'Post-Discharge', 'YAKAP Follow-up'])
+          }}
+        >
           <div className="icon">💚</div>
-          <h3>YAKAP Follow-up</h3>
+          <h3>YAKAP Follow-up →</h3>
           <p>Primary care follow-up under YAKAP</p>
-        </div>
-        <div className="choice-card" style={{ cursor: 'default' }}>
+        </button>
+        <button
+          type="button"
+          className="choice-card"
+          onClick={() => {
+            setBenefitType('yakap')
+            setYakapSub('gamot')
+            setProcessStep(0)
+            setGamotRx(null)
+            setGamotBranch(null)
+            setGamotDispensed(null)
+            setDetailView('main')
+            setCancerStep(null)
+            setScreen(5)
+            setPath(['Start', 'Post-Discharge', 'Gamot Ecosystem'])
+          }}
+        >
           <div className="icon">💊</div>
-          <h3>Gamot Medicines</h3>
-          <p>Thru Pharmacy & MedPure</p>
-        </div>
-        <div className="choice-card" style={{ cursor: 'default' }}>
+          <h3>Gamot Medicines →</h3>
+          <p>Thru Pharmacy & MedPure · Open Gamot pathway</p>
+        </button>
+        <button
+          type="button"
+          className="choice-card"
+          onClick={() => {
+            setBenefitType('yakap')
+            setYakapSub('standard')
+            setProcessStep(5)
+            setDetailView('main')
+            setCancerStep(null)
+            setScreen(5)
+            setPath(['Start', 'Post-Discharge', 'Follow-up / Referral'])
+          }}
+        >
           <div className="icon">🔗</div>
-          <h3>Follow-up / Referral</h3>
+          <h3>Follow-up / Referral →</h3>
           <p>Specialty or higher-level care linkage</p>
-        </div>
+        </button>
       </div>
 
       <div className="reminders">

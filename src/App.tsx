@@ -3411,10 +3411,10 @@ export default function App() {
           />
           <div className="brand-text">
             <strong>GLOBAL CARE</strong>
-            <span>Medical Center · Canlubang</span>
+            <span>Canlubang</span>
           </div>
         </div>
-        <h1>PhilHealth Benefits Utilization Flow</h1>
+        <h1>Gcare PhilHealth Benefits Utilization Program</h1>
         <p className="tagline">Global Care Canlubang PhilHealth Ecosystem</p>
       </header>
 
@@ -3431,7 +3431,7 @@ export default function App() {
         <strong>OUR COMMITMENT:</strong> Right Benefit. Right Patient. Right Time.
         <br />
         We Care. We Guide. We Serve. · Global Care Medical Center – Canlubang
-      </div>
+      </div>x
     </div>
   )
 }

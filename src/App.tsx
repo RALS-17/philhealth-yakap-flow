@@ -223,6 +223,26 @@ export default function App() {
     }
 
     if (screen === 4) {
+      // ER Triage: if a Level 1–4 was selected, go back to level list first
+      if (
+        entryType === 'er' &&
+        benefitType === 'er' &&
+        path.some((p) => p.startsWith('Level ')) &&
+        !erSub
+      ) {
+        setPath((p) => p.filter((x) => !x.startsWith('Level ')))
+        return
+      }
+      // ER Triage opened from Start → back to Patient Entry
+      if (entryType === 'er' && benefitType === 'er') {
+        setBenefitType(null)
+        setErSub(null)
+        setEntryType(null)
+        clearSubState()
+        setPath(['Start'])
+        setScreen(1)
+        return
+      }
       // Intermediate choice screens → Clinical Classification
       setScreen(3)
       setPath((p) => p.slice(0, 3))
@@ -232,16 +252,26 @@ export default function App() {
     }
 
     if (screen === 5) {
-      // Leave detail / package screen → intermediate choice (screen 4)
-      // Always land on a renderable screen (never blank)
-      clearSubState()
-      setPath((p) => p.slice(0, 4))
-      // Z-BEN has no intermediate screen 4 content beyond detail — go to classification
+      // Leave detail → intermediate (ER triage / YAKAP choices / etc.)
       if (benefitType === 'zbenefit') {
+        clearSubState()
         setBenefitType(null)
         setPath((p) => p.slice(0, 3))
         setScreen(3)
+      } else if (benefitType === 'er') {
+        // Back to Level 1–4 Admissible/OECB choice (keep the Level in path)
+        setErSub(null)
+        setDetailView('main')
+        setProcessStep(0)
+        setPath((p) => {
+          // Keep up to the Level entry
+          const idx = p.findIndex((x) => x.startsWith('Level '))
+          return idx >= 0 ? p.slice(0, idx + 1) : p.slice(0, 4)
+        })
+        setScreen(4)
       } else {
+        clearSubState()
+        setPath((p) => p.slice(0, 4))
         setScreen(4)
       }
       return
@@ -284,6 +314,14 @@ export default function App() {
     }
     setEntryType(type)
     setPath(['Start', labels[type]])
+    // ER from Start → open Triage immediately (3A)
+    if (type === 'er') {
+      setBenefitType('er')
+      setErSub(null)
+      setPath(['Start', 'ER', 'ER Triage'])
+      setScreen(4)
+      return
+    }
     setScreen(2)
   }
 
@@ -375,7 +413,7 @@ export default function App() {
           <p>Emergency Room</p>
           <ul>
             <li>Acute illness / injury</li>
-            <li>OECB screening for every ER patient</li>
+            <li>Triage Levels 1–5 · OECB (27 symptoms)</li>
           </ul>
         </button>
         <button className="choice-card green-card" onClick={() => selectEntry('opd')}>
@@ -484,25 +522,181 @@ export default function App() {
   // ---------- SCREEN 4: intermediate choices ----------
   const renderScreen4 = () => {
     if (benefitType === 'er') {
+      // Start → ER: Triage | Clinical Classification → ER: Admissible / Non-Admissible
+      const fromStartEr =
+        path.includes('ER Triage') ||
+        (entryType === 'er' && !path.includes('Clinical Classification'))
+
+      if (fromStartEr) {
+        // After picking Level 1–4, show Admissible vs OECB (27 symptoms) choice
+        const selectedLevel = path.find((p) => p.startsWith('Level '))
+        if (selectedLevel && !erSub) {
+          return (
+            <div className="screen">
+              <PathBreadcrumb path={path} />
+              <div className="section-title">{selectedLevel} – Benefit Determination</div>
+              <p className="section-desc">
+                After triage and ER management: is the patient admissible, or can they be discharged
+                within 24 hours under the 27 Emergency Symptoms (OECB)?
+              </p>
+              <div className="card-grid">
+                <button
+                  className="choice-card er-card"
+                  onClick={() => {
+                    setErSub('admissible')
+                    setPath((p) => [...p, 'Admissible (ACR / NBB)'])
+                    setScreen(5)
+                  }}
+                >
+                  <span className="level-badge l1">ADMISSIBLE</span>
+                  <h3>Admitted</h3>
+                  <p>
+                    Manage per ER Protocol → Admission
+                    <br />
+                    1. Paying: ACR · 2. Indigent: NBB · 3. Enhanced Special Inpatient Packages
+                  </p>
+                </button>
+                <button
+                  className="choice-card"
+                  onClick={() => {
+                    setErSub('non-admissible')
+                    setPath((p) => [...p, 'OECB (27 Emergency Symptoms)'])
+                    setScreen(5)
+                  }}
+                >
+                  <div className="icon">📋</div>
+                  <h3>Non-Admissible – OECB</h3>
+                  <p>
+                    Matches one of the 27 Emergency Symptoms and is resolved / discharged within 24
+                    hours · Patient will NOT be admitted
+                  </p>
+                </button>
+              </div>
+              <div className="note-box blue" style={{ marginTop: 14 }}>
+                Reference: PhilHealth Circular 2024-0027. OECB applies only when the patient is
+                treated and discharged within 24 hours without admission.
+              </div>
+              <div className="nav-row">
+                <button className="btn btn-outline" onClick={goBack}>
+                  ← Back
+                </button>
+              </div>
+            </div>
+          )
+        }
+
+        return (
+          <div className="screen">
+            <PathBreadcrumb path={path} />
+            <div className="section-title">3A. For ER Patients – Triage & Benefit Determination</div>
+            <p className="section-desc">
+              Select the triage level. Levels 1–4 → then choose Admitted or OECB (27 symptoms).
+              Level 5 → YAKAP.
+            </p>
+            <div className="card-grid">
+              <button
+                className="choice-card er-card"
+                onClick={() => {
+                  setPath((p) => [...p, 'Level 1 – Resuscitation'])
+                }}
+              >
+                <span className="level-badge l1">LEVEL 1</span>
+                <h3>Resuscitation</h3>
+                <p>Immediate life-saving intervention → Manage per ER Protocol → then Admitted or OECB</p>
+              </button>
+              <button
+                className="choice-card er-card"
+                onClick={() => {
+                  setPath((p) => [...p, 'Level 2 – Emergency'])
+                }}
+              >
+                <span className="level-badge l2">LEVEL 2</span>
+                <h3>Emergency</h3>
+                <p>High risk, needs rapid care → Manage per ER Protocol → then Admitted or OECB</p>
+              </button>
+              <button
+                className="choice-card"
+                onClick={() => {
+                  setPath((p) => [...p, 'Level 3 – Urgent'])
+                }}
+              >
+                <span className="level-badge l3">LEVEL 3</span>
+                <h3>Urgent</h3>
+                <p>Needs prompt attention → Manage per ER Protocol → then Admitted or OECB</p>
+              </button>
+              <button
+                className="choice-card"
+                onClick={() => {
+                  setPath((p) => [...p, 'Level 4 – Less Urgent'])
+                }}
+              >
+                <span className="level-badge l4">LEVEL 4</span>
+                <h3>Less Urgent</h3>
+                <p>Can wait short period → Manage per ER Protocol → then Admitted or OECB</p>
+              </button>
+              <button
+                className="choice-card green-card"
+                onClick={() => {
+                  setBenefitType('yakap')
+                  setErSub(null)
+                  setYakapSub(null)
+                  setPath((p) => [...p, 'Level 5 – Non-Urgent → YAKAP'])
+                  setScreen(4)
+                }}
+              >
+                <span className="level-badge l5">LEVEL 5</span>
+                <h3>Non-Urgent</h3>
+                <p>Endorsed to YAKAP Doctor for Consultation (YAKAP PHIC Benefits)</p>
+              </button>
+            </div>
+            <div className="note-box blue" style={{ marginTop: 14 }}>
+              Levels 1–4: after ER management, choose <strong>Admitted</strong> (ACR / NBB) or{' '}
+              <strong>OECB</strong> if the case matches one of the 27 Emergency Symptoms and is
+              discharged within 24 hours. Level 5 → YAKAP.
+            </div>
+            <div className="nav-row">
+              <button className="btn btn-outline" onClick={goBack}>
+                ← Back
+              </button>
+            </div>
+          </div>
+        )
+      }
+
+      // Clinical Classification path: keep Admissible / Non-Admissible
       return (
         <div className="screen">
           <PathBreadcrumb path={path} />
           <div className="section-title">Emergency Ecosystem</div>
-          <p className="section-desc">Every ER patient undergoes OECB screening. Is the patient admissible?</p>
+          <p className="section-desc">
+            Every ER patient undergoes OECB screening. Is the patient admissible?
+          </p>
           <div className="card-grid">
             <button className="choice-card er-card" onClick={() => selectErSub('admissible')}>
               <span className="level-badge l1">ADMISSIBLE</span>
               <h3>Admissible</h3>
-              <p>1. Paying: ACR<br />2. Indigent: NBB<br />3. Enhanced Special Inpatient Packages</p>
+              <p>
+                1. Paying: ACR
+                <br />
+                2. Indigent: NBB
+                <br />
+                3. Enhanced Special Inpatient Packages
+              </p>
             </button>
             <button className="choice-card" onClick={() => selectErSub('non-admissible')}>
               <span className="level-badge l5">NON-ADMISSIBLE</span>
               <h3>Non-Admissible (OECB)</h3>
-              <p>Outpatient Emergency Care Benefit<br />Resolved within 24 hours</p>
+              <p>
+                Outpatient Emergency Care Benefit
+                <br />
+                Resolved within 24 hours
+              </p>
             </button>
           </div>
           <div className="nav-row">
-            <button className="btn btn-outline" onClick={goBack}>← Back</button>
+            <button className="btn btn-outline" onClick={goBack}>
+              ← Back
+            </button>
           </div>
         </div>
       )

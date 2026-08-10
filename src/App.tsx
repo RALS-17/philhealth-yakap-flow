@@ -84,9 +84,25 @@ export default function App() {
   const [cancerScreenType, setCancerScreenType] = useState<string | null>(null)
   const [zQualified, setZQualified] = useState<'yes' | 'no' | null>(null)
 
+  const clearSubState = () => {
+    setErSub(null)
+    setSpecialPkg(null)
+    setYakapSub(null)
+    setCancerStep(null)
+    setCancerScreenType(null)
+    setDetailView('main')
+    setProcessStep(0)
+    setGamotRx(null)
+    setGamotBranch(null)
+    setGamotDispensed(null)
+    setAcrPackage(null)
+    setZQualified(null)
+  }
+
   const goBack = () => {
     if (screen === 1) return
-    // Process step back within Gamot / YAKAP / ACR interactive flows
+
+    // --- Step back inside interactive process flows (stay on current detail) ---
     if (yakapSub === 'gamot' && processStep > 0) {
       if (processStep === 3 && gamotRx) {
         setGamotRx(null)
@@ -110,19 +126,32 @@ export default function App() {
     if (detailView === 'acr-flow' && processStep > 0) {
       if (processStep === 4 && acrPackage) {
         setAcrPackage(null)
+        setProcessStep(3)
         return
       }
       setProcessStep((s) => s - 1)
       return
     }
     if (detailView === 'z-flow' && processStep > 0) {
-      if (processStep === 6 && zQualified) {
+      if (processStep === 7 && zQualified) {
         setZQualified(null)
+        setProcessStep(6)
         return
       }
       setProcessStep((s) => s - 1)
       return
     }
+    if (
+      (detailView === 'animal-flow' ||
+        detailView === 'rehab-flow' ||
+        detailView === 'dialysis-flow') &&
+      processStep > 0
+    ) {
+      setProcessStep((s) => s - 1)
+      return
+    }
+
+    // --- Exit detail sub-view back to package summary (screen 5 main) ---
     if (detailView !== 'main') {
       setDetailView('main')
       setProcessStep(0)
@@ -130,6 +159,8 @@ export default function App() {
       setZQualified(null)
       return
     }
+
+    // --- Cancer screening step back ---
     if (cancerStep) {
       if (cancerStep === 'confirmed') {
         setCancerStep('result-abnormal')
@@ -152,58 +183,60 @@ export default function App() {
         setPath((p) => p.slice(0, -1))
         return
       }
+      // Leaving cancer risk → back to YAKAP choice screen (4)
       if (cancerStep === 'risk') {
         setCancerStep(null)
         setCancerScreenType(null)
-        setPath((p) => p.slice(0, -1))
+        setYakapSub(null)
+        setPath((p) => p.slice(0, 4))
+        setScreen(4)
         return
       }
     }
+
+    // --- Screen-level back ---
     if (screen === 2) {
       setScreen(1)
       setPath(['Start'])
       setEntryType(null)
-    } else if (screen === 3) {
+      return
+    }
+
+    if (screen === 3) {
       setScreen(2)
       setPath((p) => p.slice(0, 2))
-    } else if (screen === 4) {
+      return
+    }
+
+    if (screen === 4) {
+      // Intermediate choice screens → Clinical Classification
       setScreen(3)
       setPath((p) => p.slice(0, 3))
       setBenefitType(null)
-      setErSub(null)
-      setSpecialPkg(null)
-      setYakapSub(null)
-      setCancerStep(null)
-      setCancerScreenType(null)
-      setDetailView('main')
-      setProcessStep(0)
-      setGamotRx(null)
-      setGamotBranch(null)
-      setGamotDispensed(null)
-      setAcrPackage(null)
-      setZQualified(null)
-    } else if (screen === 5) {
-      if (erSub || specialPkg || yakapSub) {
-        setErSub(null)
-        setSpecialPkg(null)
-        setYakapSub(null)
-        setCancerStep(null)
-        setCancerScreenType(null)
-        setDetailView('main')
-        setProcessStep(0)
-        setGamotRx(null)
-        setGamotBranch(null)
-        setGamotDispensed(null)
-        setAcrPackage(null)
-        setZQualified(null)
-        setPath((p) => p.slice(0, 4))
-        return
-      }
-      setScreen(4)
+      clearSubState()
+      return
+    }
+
+    if (screen === 5) {
+      // Leave detail / package screen → intermediate choice (screen 4)
+      // Always land on a renderable screen (never blank)
+      clearSubState()
       setPath((p) => p.slice(0, 4))
-    } else if (screen === 6) {
+      // Z-BEN has no intermediate screen 4 content beyond detail — go to classification
+      if (benefitType === 'zbenefit') {
+        setBenefitType(null)
+        setPath((p) => p.slice(0, 3))
+        setScreen(3)
+      } else {
+        setScreen(4)
+      }
+      return
+    }
+
+    if (screen === 6) {
       setScreen(5)
       setPath((p) => p.slice(0, -1))
+      return
     }
   }
 
@@ -571,7 +604,28 @@ export default function App() {
       return renderBenefitDetail()
     }
 
-    return null
+    // Safety: never leave a blank screen
+    return (
+      <div className="screen">
+        <PathBreadcrumb path={path} />
+        <div className="note-box blue">
+          Session step reset. Please continue from Clinical Classification.
+        </div>
+        <div className="nav-row">
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              setScreen(3)
+              setPath((p) => (p.length >= 3 ? p.slice(0, 3) : ['Start', '…', 'Clinical Classification']))
+              setBenefitType(null)
+              clearSubState()
+            }}
+          >
+            Go to Clinical Classification →
+          </button>
+        </div>
+      </div>
+    )
   }
 
   // ---------- OECB TABLES ----------
@@ -1072,7 +1126,25 @@ export default function App() {
       )
     }
 
-    return null
+    return (
+      <div className="screen">
+        <div className="note-box blue">Cancer step unavailable. Returning to YAKAP choices.</div>
+        <div className="nav-row">
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              setCancerStep(null)
+              setCancerScreenType(null)
+              setYakapSub(null)
+              setScreen(4)
+              setPath((p) => p.slice(0, 4))
+            }}
+          >
+            Back to YAKAP →
+          </button>
+        </div>
+      </div>
+    )
   }
 
   // ---------- GAMOT FLOW (interactive process) ----------
@@ -2273,7 +2345,31 @@ export default function App() {
       )
     }
 
-    return null
+    // Safety: never blank
+    return (
+      <div className="screen">
+        <PathBreadcrumb path={path} />
+        <div className="note-box blue">
+          This step could not be displayed. Use Back or return to classification.
+        </div>
+        <div className="nav-row">
+          <button className="btn btn-outline" onClick={goBack}>
+            ← Back
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={() => {
+              setScreen(3)
+              setPath((p) => (p.length >= 3 ? p.slice(0, 3) : ['Start', '…', 'Clinical Classification']))
+              setBenefitType(null)
+              clearSubState()
+            }}
+          >
+            Clinical Classification →
+          </button>
+        </div>
+      </div>
+    )
   }
 
   const renderScreen5 = () => renderBenefitDetail()

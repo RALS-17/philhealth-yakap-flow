@@ -2,18 +2,30 @@ import { useState } from 'react'
 
 type Screen = 1 | 2 | 3 | 4 | 5 | 6
 type EntryType = 'er' | 'opd' | 'direct' | null
-type BenefitType = 'er' | 'opd' | 'special' | 'zbenefit' | null
+type BenefitType = 'er' | 'yakap' | 'daysurgery' | 'specialized' | 'zbenefit' | null
 type ErSub = 'admissible' | 'non-admissible' | null
 type SpecialPkg =
+  | 'woundcare'
+  | 'endoscopy'
+  | 'hsg'
+  | 'dialysis'
+  | 'chemo'
+  | 'radio'
+  | 'blood'
+  | 'animalbite'
+  | 'rehab'
   | 'ami'
   | 'maternity'
-  | 'rehab'
-  | 'dialysis'
-  | 'animalbite'
-  | 'daysurgery'
   | null
 type YakapSub = 'standard' | 'cancer' | 'gamot' | null
-type CancerStep = null | 'risk' | 'screen' | 'result-normal' | 'result-abnormal' | 'confirmed'
+type CancerStep =
+  | null
+  | 'risk'
+  | 'screen-type'
+  | 'screen-checklist'
+  | 'result-normal'
+  | 'result-abnormal'
+  | 'confirmed'
 type OecbTab = 'overview' | 'groups' | 'covered' | 'pathways'
 type DetailView =
   | 'main'
@@ -24,6 +36,7 @@ type DetailView =
   | 'z-flow'
   | 'animal-flow'
   | 'rehab-flow'
+  | 'dialysis-flow'
 type ProcessStep = number // 0-based index for interactive process flows
 
 function PathBreadcrumb({ path }: { path: string[] }) {
@@ -67,10 +80,13 @@ export default function App() {
   const [gamotBranch, setGamotBranch] = useState<string | null>(null)
   const [gamotRx, setGamotRx] = useState<'new' | 'existing' | null>(null)
   const [gamotDispensed, setGamotDispensed] = useState<'full' | 'partial' | null>(null)
+  const [acrPackage, setAcrPackage] = useState<'standard' | 'special' | null>(null)
+  const [cancerScreenType, setCancerScreenType] = useState<string | null>(null)
+  const [zQualified, setZQualified] = useState<'yes' | 'no' | null>(null)
 
   const goBack = () => {
     if (screen === 1) return
-    // Process step back within Gamot / YAKAP interactive flows
+    // Process step back within Gamot / YAKAP / ACR interactive flows
     if (yakapSub === 'gamot' && processStep > 0) {
       if (processStep === 3 && gamotRx) {
         setGamotRx(null)
@@ -91,24 +107,54 @@ export default function App() {
       setProcessStep((s) => s - 1)
       return
     }
+    if (detailView === 'acr-flow' && processStep > 0) {
+      if (processStep === 4 && acrPackage) {
+        setAcrPackage(null)
+        return
+      }
+      setProcessStep((s) => s - 1)
+      return
+    }
+    if (detailView === 'z-flow' && processStep > 0) {
+      if (processStep === 6 && zQualified) {
+        setZQualified(null)
+        return
+      }
+      setProcessStep((s) => s - 1)
+      return
+    }
     if (detailView !== 'main') {
       setDetailView('main')
       setProcessStep(0)
+      setAcrPackage(null)
+      setZQualified(null)
       return
     }
     if (cancerStep) {
-      if (cancerStep === 'confirmed' || cancerStep === 'result-abnormal' || cancerStep === 'result-normal') {
-        setCancerStep('screen')
+      if (cancerStep === 'confirmed') {
+        setCancerStep('result-abnormal')
         setPath((p) => p.slice(0, -1))
         return
       }
-      if (cancerStep === 'screen') {
+      if (cancerStep === 'result-abnormal' || cancerStep === 'result-normal') {
+        setCancerStep('screen-checklist')
+        setPath((p) => p.slice(0, -1))
+        return
+      }
+      if (cancerStep === 'screen-checklist') {
+        setCancerStep('screen-type')
+        setPath((p) => p.slice(0, -1))
+        return
+      }
+      if (cancerStep === 'screen-type') {
         setCancerStep('risk')
+        setCancerScreenType(null)
         setPath((p) => p.slice(0, -1))
         return
       }
       if (cancerStep === 'risk') {
         setCancerStep(null)
+        setCancerScreenType(null)
         setPath((p) => p.slice(0, -1))
         return
       }
@@ -128,22 +174,28 @@ export default function App() {
       setSpecialPkg(null)
       setYakapSub(null)
       setCancerStep(null)
+      setCancerScreenType(null)
       setDetailView('main')
       setProcessStep(0)
       setGamotRx(null)
       setGamotBranch(null)
       setGamotDispensed(null)
+      setAcrPackage(null)
+      setZQualified(null)
     } else if (screen === 5) {
       if (erSub || specialPkg || yakapSub) {
         setErSub(null)
         setSpecialPkg(null)
         setYakapSub(null)
         setCancerStep(null)
+        setCancerScreenType(null)
         setDetailView('main')
         setProcessStep(0)
         setGamotRx(null)
         setGamotBranch(null)
         setGamotDispensed(null)
+        setAcrPackage(null)
+        setZQualified(null)
         setPath((p) => p.slice(0, 4))
         return
       }
@@ -164,12 +216,15 @@ export default function App() {
     setSpecialPkg(null)
     setYakapSub(null)
     setCancerStep(null)
+    setCancerScreenType(null)
     setOecbTab('overview')
     setDetailView('main')
     setProcessStep(0)
     setGamotRx(null)
     setGamotBranch(null)
     setGamotDispensed(null)
+    setAcrPackage(null)
+    setZQualified(null)
   }
 
   const selectEntry = (type: EntryType) => {
@@ -193,9 +248,10 @@ export default function App() {
     if (!type) return
     const labels: Record<string, string> = {
       er: 'Emergency Room',
-      opd: 'OPD – YAKAP',
-      special: 'Special Package',
-      zbenefit: 'Z Benefit',
+      yakap: 'YAKAP',
+      daysurgery: 'Day Surgery / Procedure',
+      specialized: 'Specialized Therapy Services',
+      zbenefit: 'Z-BEN',
     }
     setBenefitType(type)
     setPath((p) => [...p, labels[type]])
@@ -216,12 +272,17 @@ export default function App() {
   const selectSpecial = (pkg: SpecialPkg) => {
     if (!pkg) return
     const labels: Record<string, string> = {
+      woundcare: 'Woundcare',
+      endoscopy: 'Endoscopy',
+      hsg: 'HSG',
+      dialysis: 'Hemodialysis',
+      chemo: 'Chemotherapy',
+      radio: 'Radiotherapy',
+      blood: 'Blood Transfusion',
+      animalbite: 'Animal Bite',
+      rehab: 'Rehab',
       ami: 'AMI Package',
-      maternity: 'Maternity & New Born Package',
-      rehab: 'Rehab Package',
-      dialysis: 'Dialysis Package',
-      animalbite: 'Animal Bite Package',
-      daysurgery: 'Day Surgery Package',
+      maternity: 'Maternity & New Born',
     }
     setSpecialPkg(pkg)
     setPath((p) => [...p, labels[pkg]])
@@ -242,7 +303,10 @@ export default function App() {
     setGamotRx(null)
     setGamotBranch(null)
     setGamotDispensed(null)
-    if (sub === 'cancer') setCancerStep('risk')
+    if (sub === 'cancer') {
+      setCancerStep('risk')
+      setCancerScreenType(null)
+    }
   }
 
   const goToCoordination = () => {
@@ -331,22 +395,35 @@ export default function App() {
         <button className="choice-card er-card" onClick={() => selectBenefit('er')}>
           <div className="icon">🚨</div>
           <h3>Emergency Room</h3>
-          <p>Admissible (ACR / NBB) or Non-Admissible (OECB)</p>
+          <p>
+            <strong>Admissible:</strong> Paying ACR · Indigent NBB · Enhanced Special Inpatient
+            Packages
+            <br />
+            <strong>Non-Admissible:</strong> OECB
+          </p>
         </button>
-        <button className="choice-card green-card" onClick={() => selectBenefit('opd')}>
+        <button className="choice-card green-card" onClick={() => selectBenefit('yakap')}>
           <div className="icon">💚</div>
-          <h3>OPD – YAKAP</h3>
-          <p>Consultation · Diagnostics · Gamot · Cancer Screening</p>
+          <h3>YAKAP</h3>
+          <p>1. Consultation · 2. Diagnostics/Lab · 3. Gamot · 4. Cancer Screening</p>
         </button>
-        <button className="choice-card" onClick={() => selectBenefit('special')}>
-          <div className="icon">📦</div>
-          <h3>Special Package</h3>
-          <p>AMI · Maternity · Rehab · Dialysis · Animal Bite · Day Surgery</p>
+        <button className="choice-card" onClick={() => selectBenefit('daysurgery')}>
+          <div className="icon">🏥</div>
+          <h3>Day Surgery / Procedure</h3>
+          <p>1. Woundcare · 2. Endoscopy · 3. HSG</p>
+        </button>
+        <button className="choice-card" onClick={() => selectBenefit('specialized')}>
+          <div className="icon">🩺</div>
+          <h3>Specialized Therapy Services</h3>
+          <p>
+            1. Hemodialysis · 2. Chemotherapy · 3. Radiotherapy · 4. Blood Transfusion · 5. Animal
+            Bite · 6. Rehab
+          </p>
         </button>
         <button className="choice-card" onClick={() => selectBenefit('zbenefit')}>
           <div className="icon">💜</div>
-          <h3>Z Benefit</h3>
-          <p>Z Package for catastrophic cases (cancer & others)</p>
+          <h3>Z-BEN</h3>
+          <p>Z-Package for catastrophic cases</p>
         </button>
       </div>
 
@@ -383,26 +460,28 @@ export default function App() {
       )
     }
 
-    if (benefitType === 'opd') {
+    if (benefitType === 'yakap') {
       return (
         <div className="screen">
           <PathBreadcrumb path={path} />
-          <div className="section-title">YAKAP Ecosystem</div>
-          <p className="section-desc">OPD / Discharged patient → YAKAP Check → Consultation → Labs / Gamot / Cancer Screening.</p>
+          <div className="section-title">YAKAP</div>
+          <p className="section-desc">
+            1. Consultation · 2. Diagnostics/Lab · 3. Gamot · 4. Cancer Screening
+          </p>
           <div className="card-grid">
             <button className="choice-card green-card" onClick={() => selectYakap('standard')}>
               <div className="icon">💚</div>
-              <h3>Standard YAKAP Benefits</h3>
-              <p>Consultation · Diagnostics / Lab · First encounter / Risk assessment</p>
+              <h3>1–2. Consultation & Diagnostics/Lab</h3>
+              <p>Standard YAKAP primary care benefits</p>
             </button>
             <button className="choice-card" onClick={() => selectYakap('gamot')}>
               <div className="icon">💊</div>
-              <h3>Gamot Ecosystem</h3>
+              <h3>3. Gamot</h3>
               <p>54 Gamot · 21 Core · Prescription flow · MedPure / Hospital Pharmacy</p>
             </button>
             <button className="choice-card" onClick={() => selectYakap('cancer')}>
               <div className="icon">🎗️</div>
-              <h3>Cancer Screening Pathway</h3>
+              <h3>4. Cancer Screening</h3>
               <p>Risk profiling → Appropriate screen → Result → Z Screen if confirmed</p>
             </button>
           </div>
@@ -413,42 +492,72 @@ export default function App() {
       )
     }
 
-    if (benefitType === 'special') {
+    if (benefitType === 'daysurgery') {
       return (
         <div className="screen">
           <PathBreadcrumb path={path} />
-          <div className="section-title">Special Package</div>
-          <p className="section-desc">Select the applicable special package / specialized therapy service.</p>
+          <div className="section-title">Day Surgery / Procedure</div>
+          <p className="section-desc">Select the applicable day surgery / procedure.</p>
           <div className="card-grid">
-            <button className="choice-card" onClick={() => selectSpecial('ami')}>
-              <div className="icon">❤️</div>
-              <h3>1. AMI</h3>
-              <p>Acute Myocardial Infarction package</p>
+            <button className="choice-card" onClick={() => selectSpecial('woundcare')}>
+              <div className="icon">🩹</div>
+              <h3>1. Woundcare</h3>
+              <p>Wound care procedure package</p>
             </button>
-            <button className="choice-card" onClick={() => selectSpecial('maternity')}>
-              <div className="icon">👶</div>
-              <h3>2. Maternity & New Born</h3>
-              <p>Maternity and newborn care package</p>
+            <button className="choice-card" onClick={() => selectSpecial('endoscopy')}>
+              <div className="icon">🔬</div>
+              <h3>2. Endoscopy</h3>
+              <p>Endoscopic procedure package</p>
             </button>
-            <button className="choice-card" onClick={() => selectSpecial('rehab')}>
-              <div className="icon">🦾</div>
-              <h3>3. Rehab</h3>
-              <p>Physical Medicine, Rehabilitation & Assistive Devices</p>
+            <button className="choice-card" onClick={() => selectSpecial('hsg')}>
+              <div className="icon">📋</div>
+              <h3>3. HSG</h3>
+              <p>Hysterosalpingography package</p>
             </button>
+          </div>
+          <div className="nav-row">
+            <button className="btn btn-outline" onClick={goBack}>← Back</button>
+          </div>
+        </div>
+      )
+    }
+
+    if (benefitType === 'specialized') {
+      return (
+        <div className="screen">
+          <PathBreadcrumb path={path} />
+          <div className="section-title">Specialized Therapy Services</div>
+          <p className="section-desc">Select the applicable specialized therapy service.</p>
+          <div className="card-grid">
             <button className="choice-card" onClick={() => selectSpecial('dialysis')}>
               <div className="icon">🩺</div>
-              <h3>4. Dialysis</h3>
+              <h3>1. Hemodialysis</h3>
               <p>Hemodialysis / peritoneal dialysis</p>
+            </button>
+            <button className="choice-card" onClick={() => selectSpecial('chemo')}>
+              <div className="icon">💉</div>
+              <h3>2. Chemotherapy</h3>
+              <p>Chemotherapy service package</p>
+            </button>
+            <button className="choice-card" onClick={() => selectSpecial('radio')}>
+              <div className="icon">☢️</div>
+              <h3>3. Radiotherapy</h3>
+              <p>Radiotherapy service package</p>
+            </button>
+            <button className="choice-card" onClick={() => selectSpecial('blood')}>
+              <div className="icon">🩸</div>
+              <h3>4. Blood Transfusion</h3>
+              <p>Blood transfusion service</p>
             </button>
             <button className="choice-card" onClick={() => selectSpecial('animalbite')}>
               <div className="icon">🐶</div>
               <h3>5. Animal Bite</h3>
               <p>Animal Bite Treatment Package (₱5,850)</p>
             </button>
-            <button className="choice-card" onClick={() => selectSpecial('daysurgery')}>
-              <div className="icon">🏥</div>
-              <h3>6. Day Surgery</h3>
-              <p>Woundcare · Endoscopy · HSG · Ambulatory</p>
+            <button className="choice-card" onClick={() => selectSpecial('rehab')}>
+              <div className="icon">🦾</div>
+              <h3>6. Rehab</h3>
+              <p>Physical Medicine, Rehabilitation & Assistive Devices</p>
             </button>
           </div>
           <div className="nav-row">
@@ -636,7 +745,10 @@ export default function App() {
 
       {oecbTab === 'pathways' && (
         <div className="section-block">
-          <h4>Sample symptom-to-action pathways</h4>
+          <h4>Sample symptom-to-action pathways (complete)</h4>
+          <p style={{ fontSize: '0.82rem', color: 'var(--muted)', marginBottom: 10 }}>
+            Full clinical pathways from Global Care Canlubang OECB reference. Scroll horizontally on small screens.
+          </p>
           <div className="data-table-wrap">
             <table className="data-table">
               <thead>
@@ -644,73 +756,73 @@ export default function App() {
                   <th>Presentation</th>
                   <th>Immediate ED actions</th>
                   <th>Priority diagnostics</th>
-                  <th>Initial meds / interventions</th>
-                  <th>Likely disposition & PhilHealth pathway</th>
+                  <th>Initial medications or interventions</th>
+                  <th>Likely disposition and PhilHealth pathway</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td className="group-label">Chest pain / suspected ACS</td>
-                  <td>Triage as high acuity; ECG rapidly; cardiac monitoring; IV access; focused history; serial reassessments</td>
-                  <td>ECG ~10 min; troponin; CBC, glucose, renal & electrolytes; chest radiograph when indicated</td>
-                  <td>Aspirin if ACS suspected & no contraindication; nitroglycerin when appropriate; oxygen only for hypoxemia; analgesia; anticoagulation/antiplatelet per protocol</td>
-                  <td>Low-risk causes resolved & discharged within 24 h → OECB. Confirmed or strongly suspected AMI → admission/transfer + AMI/inpatient package</td>
+                  <td className="group-label">Chest pain or suspected acute coronary syndrome</td>
+                  <td>Triage as high acuity when ischemia is possible; obtain ECG rapidly; cardiac monitoring; IV access; focused history; serial reassessments</td>
+                  <td>ECG within approximately 10 minutes; troponin; CBC, glucose, renal and electrolyte tests; chest radiograph when indicated</td>
+                  <td>Aspirin when ACS is suspected and no contraindication; nitroglycerin when appropriate; oxygen only for hypoxemia; analgesia; anticoagulation or antiplatelet therapy according to protocol</td>
+                  <td>Low-risk causes that resolve and are discharged within 24 hours may qualify for OECB. Confirmed or strongly suspected AMI generally requires admission or transfer and the appropriate AMI/inpatient package.</td>
                 </tr>
                 <tr>
                   <td className="group-label">Acute stroke symptoms</td>
-                  <td>Record last-known-well; FAST or equivalent; neurologic scale; glucose; airway assessment; activate stroke pathway</td>
-                  <td>Non-contrast CT head urgently; CBC, platelets, PT/INR, aPTT, glucose, renal tests; CTA when thrombectomy evaluation indicated</td>
-                  <td>Maintain airway & oxygenation; treat hypoglycemia; NPO until swallow assessment; evaluate for alteplase/tenecteplase & thrombectomy under protocol</td>
-                  <td>Most true acute strokes require admission or transfer. OECB may cover initial qualifying ED services only when no admission occurs</td>
+                  <td>Record last-known-well; FAST or equivalent screening; neurologic scale; glucose; airway assessment; activate stroke pathway</td>
+                  <td>Non-contrast CT head urgently; CBC, platelets, PT/INR, aPTT, glucose, renal tests; CTA when thrombectomy evaluation is indicated</td>
+                  <td>Maintain airway and oxygenation; treat hypoglycemia; keep nil by mouth until swallow assessment; evaluate for alteplase or tenecteplase and thrombectomy under stroke protocol</td>
+                  <td>Most true acute strokes require admission or transfer. OECB may cover initial qualifying ED services only when no admission occurs and all package conditions are met; definitive acute-stroke packages take precedence where applicable.</td>
                 </tr>
                 <tr>
                   <td className="group-label">Sepsis or septic shock</td>
-                  <td>Sepsis screen; ABC assessment; monitor perfusion, mental status, urine output, oxygenation; obtain IV access</td>
-                  <td>Lactate; CBC; renal & hepatic tests; glucose; cultures before antibiotics when this does not delay treatment; imaging for source</td>
-                  <td>Broad-spectrum antibiotics promptly; crystalloid resuscitation for hypotension/hypoperfusion; vasopressor support to maintain adequate perfusion when shock persists</td>
-                  <td>Suspected sepsis with organ dysfunction or shock normally requires admission or transfer. Transient febrile illness discharged within 24 h may qualify for OECB if criteria met</td>
+                  <td>Sepsis screen; ABC assessment; monitor perfusion, mental status, urine output, and oxygenation; obtain IV access</td>
+                  <td>Lactate; CBC; renal and hepatic tests; glucose; cultures before antibiotics when this does not delay treatment; imaging for source</td>
+                  <td>Broad-spectrum antibiotics promptly; crystalloid resuscitation for hypotension or hypoperfusion; vasopressor support to maintain adequate perfusion when shock persists</td>
+                  <td>Suspected sepsis with organ dysfunction or shock normally requires admission or transfer. A transient febrile illness discharged within 24 hours may qualify for OECB if the criteria are otherwise met.</td>
                 </tr>
                 <tr>
                   <td className="group-label">Trauma</td>
-                  <td>Primary survey ABCDE; control external hemorrhage; protect cervical spine when indicated; expose & prevent hypothermia</td>
-                  <td>Focused imaging (FAST, radiographs, CT); CBC; pregnancy test; coagulation tests; type/crossmatch as indicated</td>
-                  <td>Hemorrhage control; oxygen; IV or intraosseous access; fluids or blood per protocol; analgesia; tetanus prophylaxis; splinting</td>
-                  <td>Minor trauma managed & discharged within 24 h may be OECB. Major trauma, surgery, transfusion, admission → applicable inpatient or procedural package</td>
+                  <td>Primary survey using ABCDE; control external hemorrhage; protect cervical spine when indicated; expose and prevent hypothermia</td>
+                  <td>Focused imaging based on injury; FAST, radiographs, CT, CBC, pregnancy test, coagulation tests and type/crossmatch as indicated</td>
+                  <td>Hemorrhage control; oxygen; IV or intraosseous access; fluids or blood according to protocol; analgesia; tetanus prophylaxis; splinting</td>
+                  <td>Minor trauma managed and discharged within 24 hours may be OECB. Major trauma, surgery, transfusion, admission, or an existing procedural case rate should use the applicable inpatient or procedural package.</td>
                 </tr>
                 <tr>
                   <td className="group-label">Acute abdomen</td>
-                  <td>Assess shock, peritonitis, pregnancy possibility, GI bleeding, testicular or gynecologic emergency; serial examinations</td>
-                  <td>CBC, urinalysis, pregnancy test, renal & hepatic studies, lipase when indicated; ultrasound or CT depending on suspected disease</td>
+                  <td>Assess shock, peritonitis, pregnancy possibility, GI bleeding, and testicular or gynecologic emergency; provide serial examinations</td>
+                  <td>CBC, urinalysis, pregnancy test, renal and hepatic studies, lipase when indicated; ultrasound or CT depending on suspected disease</td>
                   <td>IV fluids; analgesia; antiemetic; antibiotics for suspected infection or perforation; surgical or obstetric consultation</td>
-                  <td>Non-surgical disease resolved within 24 h may be OECB. Appendicitis, perforation, obstruction, ectopic pregnancy → admission/transfer + proper case rate</td>
+                  <td>Non-surgical disease resolved within 24 hours may be OECB. Appendicitis, perforation, obstruction, ectopic pregnancy, or another operative condition requires admission or transfer and the proper case rate.</td>
                 </tr>
                 <tr>
                   <td className="group-label">Obstetric emergency</td>
                   <td>Maternal ABC assessment; obstetric-team activation; estimate bleeding; establish IV access; assess fetal status when viable</td>
-                  <td>CBC, type & crossmatch, coagulation tests, renal & hepatic tests, urine protein when relevant; ultrasound & cardiotocography as indicated</td>
-                  <td>For postpartum hemorrhage: uterotonic treatment & tranexamic acid per protocol; for eclampsia: magnesium sulfate, BP control, airway protection, delivery planning</td>
-                  <td>Most hemorrhage, eclampsia, ectopic, preterm labor & fetal emergencies require admission under maternity/surgical/inpatient benefits. OECB may cover qualifying assessment that resolves without admission</td>
+                  <td>CBC, type and crossmatch, coagulation tests, renal and hepatic tests, urine protein when relevant; ultrasound and cardiotocography as indicated</td>
+                  <td>For postpartum hemorrhage, uterotonic treatment and tranexamic acid according to protocol; for eclampsia, magnesium sulfate, blood-pressure control, airway protection, and delivery planning</td>
+                  <td>Most hemorrhage, eclampsia, ectopic pregnancy, preterm labor, and fetal emergencies require admission under maternity, surgical, or inpatient benefits. OECB may cover a qualifying assessment that resolves without admission.</td>
                 </tr>
                 <tr>
-                  <td className="group-label">Severe asthma or COPD</td>
-                  <td>Assess work of breathing, mental status, pulse oximetry, silent chest, exhaustion, need for ventilatory support</td>
-                  <td>Peak flow when feasible; ABG for severe disease; chest radiograph & ECG when indicated; infection & chemistry tests as appropriate</td>
-                  <td>Inhaled short-acting bronchodilator with ipratropium for severe attacks; systemic corticosteroid; antibiotics only when indicated; non-invasive ventilation for appropriate COPD respiratory failure</td>
-                  <td>A patient who stabilizes and is safely discharged within 24 hours may qualify for OECB. Persistent hypoxemia, hypercapnia, exhaustion, or ventilatory support generally requires admission</td>
+                  <td className="group-label">Severe asthma or COPD exacerbation</td>
+                  <td>Assess work of breathing, mental status, pulse oximetry, silent chest, exhaustion, and need for ventilatory support</td>
+                  <td>Peak flow when feasible; ABG for severe disease; chest radiograph and ECG when indicated; infection and chemistry tests as appropriate</td>
+                  <td>Inhaled short-acting bronchodilator with ipratropium for severe attacks; systemic corticosteroid; antibiotics only when indicated; non-invasive ventilation for appropriate COPD respiratory failure; supplemental oxygen to the appropriate target</td>
+                  <td>A patient who stabilizes and is safely discharged within 24 hours may qualify for OECB. Persistent hypoxemia, hypercapnia, exhaustion, or ventilatory support generally requires admission.</td>
                 </tr>
                 <tr>
                   <td className="group-label">Anaphylaxis</td>
                   <td>Recognize rapidly; call resuscitation team; place patient appropriately; airway and circulation assessment</td>
-                  <td>Diagnosis primarily clinical; ECG, glucose, ABG or other testing only when indicated and without delaying epinephrine</td>
+                  <td>Diagnosis is primarily clinical; ECG, glucose, ABG, or other testing only when indicated and without delaying epinephrine</td>
                   <td>Intramuscular epinephrine immediately; repeat as indicated; oxygen; IV fluids; airway preparation; bronchodilator for bronchospasm; adjunct antihistamine or steroid after epinephrine</td>
-                  <td>Stable patients may be observed and discharged within 24 hours under OECB. Refractory shock, airway compromise, repeated epinephrine, or prolonged observation may require admission</td>
+                  <td>Stable patients may be observed and discharged within 24 hours under OECB. Refractory shock, airway compromise, repeated epinephrine, or prolonged observation may require admission.</td>
                 </tr>
                 <tr>
                   <td className="group-label">Animal bite or rabies exposure</td>
                   <td>Wash and irrigate wounds immediately; assess bite site, severity, animal, exposure category, and neurovascular injury</td>
                   <td>Usually clinical; imaging for foreign body or bone injury; laboratory tests only when clinically indicated</td>
-                  <td>Thorough washing with soap and water ~15 min; rabies vaccine; rabies immunoglobulin for qualifying Category III exposures; tetanus prophylaxis and antibiotics when indicated</td>
-                  <td>After emergency stabilization, route eligible cases through Global Care Canlubang’s accredited Animal Bite Treatment service. Use OECB only for a separate qualifying emergency component not properly paid under the Animal Bite Package</td>
+                  <td>Thorough washing with soap and water for approximately 15 minutes; rabies vaccine; rabies immunoglobulin for qualifying Category III exposures; tetanus prophylaxis and antibiotics when indicated</td>
+                  <td>After emergency stabilization, route eligible cases through Global Care Canlubang&apos;s accredited Animal Bite Treatment service. Use OECB only for a separate qualifying emergency component that is not properly paid under the Animal Bite Package.</td>
                 </tr>
               </tbody>
             </table>
@@ -752,7 +864,7 @@ export default function App() {
             <button
               className="choice-card"
               onClick={() => {
-                setCancerStep('screen')
+                setCancerStep('screen-type')
                 setPath((p) => [...p, 'Yes → Appropriate Screen'])
               }}
             >
@@ -768,20 +880,71 @@ export default function App() {
       )
     }
 
-    if (cancerStep === 'screen') {
+    // Step: select screen type (Breast / Colorectal / Liver-Lung)
+    if (cancerStep === 'screen-type') {
       return (
         <div className="screen">
           <PathBreadcrumb path={path} />
           <div className="result-header purple">
             <h2>Appropriate Screen</h2>
-            <p>Breast · Colorectal · Liver / Lung etc.</p>
-            <div className="badge">Screening</div>
+            <p>Select the screening type</p>
+            <div className="badge">Screening Type</div>
           </div>
-          <div className="note-box blue" style={{ marginBottom: 14 }}>
-            <strong>Add requirements / checklist for PHIC</strong> — complete facility-specific
-            PhilHealth documentation and eligibility checks before screening.
+          <div className="card-grid">
+            {[
+              { key: 'Breast', icon: '🎗️', desc: 'Breast cancer screening' },
+              { key: 'Colorectal', icon: '🔬', desc: 'Colorectal cancer screening' },
+              { key: 'Liver / Lung etc.', icon: '🫁', desc: 'Liver, lung, and other site screening' },
+            ].map((s) => (
+              <button
+                key={s.key}
+                className="choice-card"
+                onClick={() => {
+                  setCancerScreenType(s.key)
+                  setCancerStep('screen-checklist')
+                  setPath((p) => [...p, s.key])
+                }}
+              >
+                <div className="icon">{s.icon}</div>
+                <h3>{s.key}</h3>
+                <p>{s.desc}</p>
+              </button>
+            ))}
           </div>
-          <div className="section-label">Screening Result</div>
+          <div className="nav-row">
+            <button className="btn btn-outline" onClick={goBack}>← Back</button>
+          </div>
+        </div>
+      )
+    }
+
+    // Step: PHIC requirements checklist then Result
+    if (cancerStep === 'screen-checklist') {
+      return (
+        <div className="screen">
+          <PathBreadcrumb path={path} />
+          <div className="result-header purple">
+            <h2>Appropriate Screen — {cancerScreenType || 'Selected'}</h2>
+            <p>PHIC requirements / checklist · then Result</p>
+            <div className="badge">PHIC Checklist</div>
+          </div>
+
+          <div className="section-label">Requirements / checklist for PHIC</div>
+          <ul className="checklist">
+            <li>Verify PhilHealth membership & eligibility (PIN / PBEF)</li>
+            <li>Confirm YAKAP registration / primary care linkage</li>
+            <li>Document risk profiling and indication for screening</li>
+            <li>Complete clinical request / order for {cancerScreenType || 'selected screen'}</li>
+            <li>Obtain informed consent for screening procedure</li>
+            <li>Record screening type and date in clinical record</li>
+            <li>Prepare claim / benefit documentation as required by PhilHealth</li>
+          </ul>
+
+          <div className="note-box blue" style={{ marginTop: 12, marginBottom: 14 }}>
+            Complete the PHIC checklist before proceeding to result disposition.
+          </div>
+
+          <div className="section-label">Result</div>
           <div className="card-grid">
             <button
               className="choice-card green-card"
@@ -1161,156 +1324,488 @@ export default function App() {
     )
   }
 
-  // ---------- INPATIENT ACR FLOW ----------
-  const renderAcrFlow = () => (
-    <div className="screen">
-      <PathBreadcrumb path={path} />
-      <div className="result-header red">
-        <h2>Inpatient All Case Rates — ACR</h2>
-        <p>Patients requiring admission move into the inpatient ecosystem</p>
-        <div className="badge">Inpatient ACR</div>
-      </div>
-      <ul className="flow-steps">
-        <li><span className="step-num">1</span> Admission Order</li>
-        <li><span className="step-num">2</span> Final / Working Diagnosis</li>
-        <li><span className="step-num">3</span> ICD-10 + Procedures Identified</li>
-        <li><span className="step-num">4</span> Special Package Screen
-          <ul style={{ marginTop: 4, paddingLeft: 8, fontSize: '0.82rem' }}>
-            <li>• NO → Standard ACR</li>
-            <li>• YES → Special / Enhanced Package</li>
-          </ul>
-        </li>
-        <li><span className="step-num">5</span> Second Case Rate Check</li>
-        <li><span className="step-num">6</span> CF2 / CF4 / CF5 / eSOA</li>
-        <li><span className="step-num">7</span> Benefit Deduction</li>
-        <li><span className="step-num">8</span> eClaims</li>
-      </ul>
-      <div className="component-list" style={{ marginTop: 14 }}>
-        <div className="component-card">
-          <div className="comp-icon">📄</div>
-          <div>
-            <h4>Paying: ACR</h4>
-            <p>All Case Rate based on final diagnosis and procedures.</p>
-          </div>
-        </div>
-        <div className="component-card">
-          <div className="comp-icon">🏥</div>
-          <div>
-            <h4>Indigent: NBB</h4>
-            <p>No Balance Billing for qualified indigent members in basic accommodation.</p>
-          </div>
-        </div>
-      </div>
-      <div className="nav-row">
-        <button className="btn btn-outline" onClick={() => setDetailView('main')}>← Back</button>
-        <button className="btn btn-primary" onClick={goToCoordination}>Continue to Benefit Coordination →</button>
-      </div>
-    </div>
-  )
+  // ---------- INPATIENT ACR FLOW (interactive process) ----------
+  const renderAcrFlow = () => {
+    const totalSteps = 8
+    const stepTitles = [
+      'Admission Order',
+      'Final / Working Diagnosis',
+      'ICD-10 + Procedures Identified',
+      'Special Package Screen',
+      'Second Case Rate Check',
+      'CF2 / CF4 / CF5 / eSOA',
+      'Benefit Deduction',
+      'eClaims',
+    ]
+    const stepBodies = [
+      'Patient requires admission. Issue the admission order to enter the inpatient ecosystem.',
+      'Establish the final or working diagnosis that will drive case rate selection.',
+      'Identify the applicable ICD-10 diagnosis code(s) and procedure code(s).',
+      'Screen whether a special or enhanced package applies.',
+      'Perform the second case rate check after primary package selection.',
+      'Complete required claim forms: CF2 / CF4 / CF5 / eSOA as applicable.',
+      'Apply the PhilHealth benefit deduction to the patient bill.',
+      'Submit claims via eClaims. Process complete.',
+    ]
 
-  // ---------- Z BENEFITS FLOW ----------
-  const renderZFlow = () => (
-    <div className="screen">
-      <PathBreadcrumb path={path} />
-      <div className="result-header purple">
-        <h2>Z Benefits Ecosystem</h2>
-        <p>Catastrophic benefit packages (including multiple Z cancer packages)</p>
-        <div className="badge">Z-Benefit</div>
+    return (
+      <div className="screen">
+        <PathBreadcrumb path={path} />
+        <div className="result-header red">
+          <h2>Inpatient All Case Rates — ACR</h2>
+          <p>Interactive process · Step {processStep + 1} of {totalSteps}</p>
+          <div className="badge">Inpatient ACR</div>
+        </div>
+
+        <ProgressDots step={processStep + 1} total={totalSteps} />
+
+        <ul className="flow-steps" style={{ marginBottom: 16 }}>
+          {stepTitles.map((t, i) => (
+            <li
+              key={i}
+              style={{
+                opacity: i === processStep ? 1 : i < processStep ? 0.85 : 0.45,
+                borderColor: i === processStep ? '#c62828' : undefined,
+                background: i === processStep ? '#ffebee' : undefined,
+              }}
+            >
+              <span
+                className="step-num"
+                style={{ background: i <= processStep ? '#c62828' : 'var(--border)' }}
+              >
+                {i + 1}
+              </span>
+              <div>
+                <strong>{t}</strong>
+                {i < processStep && i === 3 && acrPackage && (
+                  <div style={{ fontSize: '0.8rem', marginTop: 4 }}>
+                    Selected:{' '}
+                    {acrPackage === 'standard'
+                      ? 'NO → Standard ACR'
+                      : 'YES → Special / Enhanced Package'}
+                  </div>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="section-block">
+          <h4>
+            Step {processStep + 1} — {stepTitles[processStep]}
+          </h4>
+          <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>{stepBodies[processStep]}</p>
+
+          {processStep === 3 && !acrPackage && (
+            <div className="card-grid" style={{ marginBottom: 12 }}>
+              <button
+                className="choice-card"
+                onClick={() => {
+                  setAcrPackage('standard')
+                  setProcessStep(4)
+                }}
+              >
+                <h3>NO</h3>
+                <p>→ Standard ACR</p>
+              </button>
+              <button
+                className="choice-card er-card"
+                onClick={() => {
+                  setAcrPackage('special')
+                  setProcessStep(4)
+                }}
+              >
+                <h3>YES</h3>
+                <p>→ Special / Enhanced Package</p>
+              </button>
+            </div>
+          )}
+
+          {processStep === 3 && acrPackage && (
+            <div className="note-box blue" style={{ marginBottom: 12 }}>
+              Selected:{' '}
+              {acrPackage === 'standard'
+                ? 'NO → Standard ACR'
+                : 'YES → Special / Enhanced Package'}
+            </div>
+          )}
+
+          {processStep === 7 && (
+            <div className="component-list" style={{ marginBottom: 12 }}>
+              <div className="component-card">
+                <div className="comp-icon">📄</div>
+                <div>
+                  <h4>Paying: ACR</h4>
+                  <p>All Case Rate based on final diagnosis and procedures.</p>
+                </div>
+              </div>
+              <div className="component-card">
+                <div className="comp-icon">🏥</div>
+                <div>
+                  <h4>Indigent: NBB</h4>
+                  <p>No Balance Billing for qualified indigent members in basic accommodation.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {processStep < totalSteps - 1 ? (
+            processStep !== 3 && (
+              <button className="btn btn-primary" onClick={() => setProcessStep((s) => s + 1)}>
+                Next Step →
+              </button>
+            )
+          ) : (
+            <button className="btn btn-primary" onClick={goToCoordination}>
+              Continue to Benefit Coordination →
+            </button>
+          )}
+        </div>
+
+        <div className="nav-row">
+          <button
+            className="btn btn-outline"
+            onClick={() => {
+              if (processStep > 0) {
+                if (processStep === 4 && acrPackage) {
+                  setAcrPackage(null)
+                  setProcessStep(3)
+                } else {
+                  setProcessStep((s) => s - 1)
+                }
+              } else {
+                setDetailView('main')
+                setProcessStep(0)
+                setAcrPackage(null)
+              }
+            }}
+          >
+            ← Back
+          </button>
+        </div>
       </div>
-      <ul className="flow-steps">
-        <li><span className="step-num">1</span> Suspected / Confirmed Z Condition</li>
-        <li><span className="step-num">2</span> Z Benefit Alert</li>
-        <li><span className="step-num">3</span> Z Benefit Coordinator</li>
-        <li><span className="step-num">4</span> Verify GCMCC Contracted Package</li>
-        <li><span className="step-num">5</span> Check Clinical Criteria</li>
-        <li><span className="step-num">6</span> Complete Pre-auth / Required Documentation</li>
-        <li><span className="step-num">7</span> Qualified → Enroll Package → Treatment Plan → Tranche / Service Documentation → Claims + Follow-up</li>
-        <li><span className="step-num">8</span> Not Qualified → ACR / Other Pathway</li>
-      </ul>
-      <div className="note-box blue">
-        Z cancer packages include: Acute lymphocytic/lymphoblastic leukemia, Breast cancer,
-        Cervical cancer, Prostate cancer, Colon cancer, Rectal cancer.
+    )
+  }
+
+  // ---------- Z BENEFITS FLOW (interactive process) ----------
+  const renderZFlow = () => {
+    const totalSteps = 8
+    const stepTitles = [
+      'Suspected / Confirmed Z Condition',
+      'Z Benefit Alert',
+      'Z Benefit Coordinator',
+      'Verify GCMCC Contracted Package',
+      'Check Clinical Criteria',
+      'Complete Pre-auth / Required Documentation',
+      'Qualified?',
+      'Outcome',
+    ]
+    const stepBodies = [
+      'Patient has a suspected or confirmed Z-condition (catastrophic case).',
+      'Trigger the Z Benefit Alert so the pathway is activated.',
+      'Z Benefit Coordinator takes the case and guides documentation.',
+      'Verify that GCMCC has a contracted package for this condition.',
+      'Check clinical criteria against PhilHealth Z-Benefit requirements.',
+      'Complete pre-authorization and all required documentation.',
+      'Is the patient qualified for the Z package?',
+      zQualified === 'yes'
+        ? 'Qualified path: Enroll Package → Treatment Plan → Tranche / Service Documentation → Claims + Follow-up'
+        : zQualified === 'no'
+          ? 'Not Qualified → ACR / Other Pathway'
+          : 'Select qualification outcome above.',
+    ]
+
+    return (
+      <div className="screen">
+        <PathBreadcrumb path={path} />
+        <div className="result-header purple">
+          <h2>Z Benefits Ecosystem</h2>
+          <p>Interactive process · Step {processStep + 1} of {totalSteps}</p>
+          <div className="badge">Z-Benefit</div>
+        </div>
+
+        <ProgressDots step={processStep + 1} total={totalSteps} />
+
+        <div className="note-box blue" style={{ marginBottom: 12 }}>
+          Multiple Z cancer packages, including: Acute lymphocytic/lymphoblastic leukemia,
+          Breast cancer, Cervical cancer, Prostate cancer, Colon cancer, Rectal cancer.
+        </div>
+
+        <ul className="flow-steps" style={{ marginBottom: 16 }}>
+          {stepTitles.map((t, i) => (
+            <li
+              key={i}
+              style={{
+                opacity: i === processStep ? 1 : i < processStep ? 0.85 : 0.45,
+                borderColor: i === processStep ? '#7b1fa2' : undefined,
+                background: i === processStep ? '#f3e5f5' : undefined,
+              }}
+            >
+              <span
+                className="step-num"
+                style={{ background: i <= processStep ? '#7b1fa2' : 'var(--border)' }}
+              >
+                {i + 1}
+              </span>
+              <div>
+                <strong>{t}</strong>
+                {i < processStep && i === 6 && zQualified && (
+                  <div style={{ fontSize: '0.8rem', marginTop: 4 }}>
+                    Selected: {zQualified === 'yes' ? 'QUALIFIED' : 'NOT QUALIFIED'}
+                  </div>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <div className="section-block">
+          <h4>
+            Step {processStep + 1} — {stepTitles[processStep]}
+          </h4>
+          <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>{stepBodies[processStep]}</p>
+
+          {processStep === 6 && !zQualified && (
+            <div className="card-grid" style={{ marginBottom: 12 }}>
+              <button
+                className="choice-card green-card"
+                onClick={() => {
+                  setZQualified('yes')
+                  setProcessStep(7)
+                }}
+              >
+                <h3>QUALIFIED</h3>
+                <p>→ Enroll Package → Treatment Plan → Tranche / Service Documentation → Claims + Follow-up</p>
+              </button>
+              <button
+                className="choice-card"
+                onClick={() => {
+                  setZQualified('no')
+                  setProcessStep(7)
+                }}
+              >
+                <h3>NOT QUALIFIED</h3>
+                <p>→ ACR / Other Pathway</p>
+              </button>
+            </div>
+          )}
+
+          {processStep === 7 && zQualified === 'yes' && (
+            <ul className="flow-steps" style={{ marginBottom: 12 }}>
+              <li><span className="step-num">A</span> Enroll Package</li>
+              <li><span className="step-num">B</span> Treatment Plan</li>
+              <li><span className="step-num">C</span> Tranche / Service Documentation</li>
+              <li><span className="step-num">D</span> Claims + Follow-up</li>
+            </ul>
+          )}
+
+          {processStep === 7 && zQualified === 'no' && (
+            <div className="note-box blue" style={{ marginBottom: 12 }}>
+              Patient is not qualified for Z-Benefit. Route to <strong>ACR / Other Pathway</strong> as
+              clinically and administratively appropriate.
+            </div>
+          )}
+
+          {processStep < totalSteps - 1 ? (
+            processStep !== 6 && (
+              <button className="btn btn-primary" onClick={() => setProcessStep((s) => s + 1)}>
+                Next Step →
+              </button>
+            )
+          ) : (
+            <button className="btn btn-primary" onClick={goToCoordination}>
+              Continue to Benefit Coordination →
+            </button>
+          )}
+        </div>
+
+        <div className="nav-row">
+          <button
+            className="btn btn-outline"
+            onClick={() => {
+              if (processStep > 0) {
+                if (processStep === 7 && zQualified) {
+                  setZQualified(null)
+                  setProcessStep(6)
+                } else {
+                  setProcessStep((s) => s - 1)
+                }
+              } else {
+                setDetailView('main')
+                setProcessStep(0)
+                setZQualified(null)
+              }
+            }}
+          >
+            ← Back
+          </button>
+        </div>
       </div>
-      <div className="nav-row">
-        <button className="btn btn-outline" onClick={() => setDetailView('main')}>← Back</button>
-        <button className="btn btn-primary" onClick={goToCoordination}>Continue to Benefit Coordination →</button>
-      </div>
-    </div>
-  )
+    )
+  }
 
   // ---------- ANIMAL BITE FLOW ----------
-  const renderAnimalFlow = () => (
-    <div className="screen">
-      <PathBreadcrumb path={path} />
-      <div className="result-header blue">
-        <h2>Animal Bite Benefit Pathway</h2>
-        <p>Current Animal Bite Treatment Package: ₱5,850</p>
-        <div className="badge">Special Package · ABTC</div>
+  // Shared interactive step renderer for specialized pathways
+  const renderInteractivePathway = (
+    title: string,
+    subtitle: string,
+    badge: string,
+    steps: string[],
+    note?: JSX.Element | null,
+    extraAtEnd?: JSX.Element | null,
+  ) => {
+    const total = steps.length
+    return (
+      <div className="screen">
+        <PathBreadcrumb path={path} />
+        <div className="result-header blue">
+          <h2>{title}</h2>
+          <p>
+            Interactive process · Step {processStep + 1} of {total}
+            {subtitle ? ` · ${subtitle}` : ''}
+          </p>
+          <div className="badge">{badge}</div>
+        </div>
+        <ProgressDots step={processStep + 1} total={total} />
+        <ul className="flow-steps" style={{ marginBottom: 16 }}>
+          {steps.map((t, i) => (
+            <li
+              key={i}
+              style={{
+                opacity: i === processStep ? 1 : i < processStep ? 0.85 : 0.45,
+                borderColor: i === processStep ? 'var(--blue)' : undefined,
+                background: i === processStep ? 'var(--blue-light)' : undefined,
+              }}
+            >
+              <span
+                className="step-num"
+                style={{ background: i <= processStep ? 'var(--blue)' : 'var(--border)' }}
+              >
+                {i + 1}
+              </span>
+              <strong>{t}</strong>
+            </li>
+          ))}
+        </ul>
+        <div className="section-block">
+          <h4>
+            Step {processStep + 1} — {steps[processStep]}
+          </h4>
+          {processStep === total - 1 && note}
+          {processStep === total - 1 && extraAtEnd}
+          {processStep < total - 1 ? (
+            <button className="btn btn-primary" onClick={() => setProcessStep((s) => s + 1)}>
+              Next Step →
+            </button>
+          ) : (
+            <button className="btn btn-primary" onClick={goToCoordination}>
+              Continue to Benefit Coordination →
+            </button>
+          )}
+        </div>
+        <div className="nav-row">
+          <button
+            className="btn btn-outline"
+            onClick={() => {
+              if (processStep > 0) setProcessStep((s) => s - 1)
+              else {
+                setDetailView('main')
+                setProcessStep(0)
+              }
+            }}
+          >
+            ← Back
+          </button>
+        </div>
       </div>
-      <ul className="flow-steps">
-        <li><span className="step-num">1</span> Bite / Rabies Exposure</li>
-        <li><span className="step-num">2</span> Immediate Wound Care</li>
-        <li><span className="step-num">3</span> Exposure Classification</li>
-        <li><span className="step-num">4</span> PhilHealth Animal Bite Eligibility</li>
-        <li><span className="step-num">5</span> Accredited ABTC</li>
-        <li><span className="step-num">6</span> Rabies vaccine ± RIG</li>
-        <li><span className="step-num">7</span> Tetanus prophylaxis</li>
-        <li><span className="step-num">8</span> Antibiotics when indicated</li>
-        <li><span className="step-num">9</span> Complete Vaccination Schedule</li>
-        <li><span className="step-num">10</span> Claim Filing</li>
-      </ul>
-      <div className="note-box blue">
-        Package covers applicable PEP services including rabies vaccine, rabies immunoglobulin,
-        local wound care, tetanus-related treatment, antibiotics and supplies.
-      </div>
-      <div className="nav-row">
-        <button className="btn btn-outline" onClick={() => setDetailView('main')}>← Back</button>
-        <button className="btn btn-primary" onClick={goToCoordination}>Continue to Benefit Coordination →</button>
-      </div>
-    </div>
-  )
+    )
+  }
 
-  // ---------- REHAB FLOW ----------
-  const renderRehabFlow = () => (
-    <div className="screen">
-      <PathBreadcrumb path={path} />
-      <div className="result-header blue">
-        <h2>Rehabilitation Pathway</h2>
-        <p>Physical Medicine, Rehabilitation Services and Assistive Mobility Devices (2025)</p>
-        <div className="badge">Special Package · Rehab</div>
-      </div>
-      <ul className="flow-steps">
-        <li><span className="step-num">1</span> Disabling Condition</li>
-        <li><span className="step-num">2</span> PM&R Assessment</li>
-        <li><span className="step-num">3</span> Functional Assessment</li>
-        <li><span className="step-num">4</span> Check PhilHealth Rehab / Z / Assistive-device Package</li>
-        <li><span className="step-num">5</span> Preauthorization if Required</li>
-        <li><span className="step-num">6</span> Therapy / Device</li>
-        <li><span className="step-num">7</span> Outcome Assessment</li>
-        <li><span className="step-num">8</span> Claim</li>
-        <li><span className="step-num">9</span> Follow-up Rehabilitation</li>
-      </ul>
-      <div className="section-label">GCMCC should screen</div>
-      <ul className="checklist">
-        <li>Stroke survivors</li>
-        <li>Spinal cord injuries</li>
-        <li>Amputees</li>
-        <li>Neurologic disease</li>
-        <li>Post-trauma patients</li>
-        <li>Post-ICU disability</li>
-        <li>Cancer rehabilitation</li>
-        <li>Patients requiring wheelchairs / walkers / crutches / canes</li>
-      </ul>
-      <div className="note-box blue" style={{ marginTop: 12 }}>
-        GCMCC is currently not accredited but will apply for accreditation. The Rehab coordinator
-        should make an appropriate referral to GMCL if there is a need.
-      </div>
-      <div className="nav-row">
-        <button className="btn btn-outline" onClick={() => setDetailView('main')}>← Back</button>
-        <button className="btn btn-primary" onClick={goToCoordination}>Continue to Benefit Coordination →</button>
-      </div>
-    </div>
-  )
+  const renderAnimalFlow = () =>
+    renderInteractivePathway(
+      'Animal Bite Benefit Pathway',
+      'Package ₱5,850',
+      'Specialized · ABTC',
+      [
+        'Bite / Rabies Exposure',
+        'Immediate wound care',
+        'Exposure classification',
+        'PhilHealth Animal Bite eligibility',
+        'Accredited ABTC',
+        'Rabies vaccine ± RIG',
+        'Tetanus prophylaxis',
+        'Antibiotics when indicated',
+        'Complete vaccination schedule',
+        'Claim filing',
+      ],
+      <div className="note-box blue" style={{ marginBottom: 12 }}>
+        The current Animal Bite Treatment Package is <strong>₱5,850</strong> and covers applicable
+        PEP services including rabies vaccine, rabies immunoglobulin, local wound care,
+        tetanus-related treatment, antibiotics and supplies.
+      </div>,
+    )
+
+  const renderRehabFlow = () =>
+    renderInteractivePathway(
+      'Rehabilitation Pathway',
+      'PM&R / Assistive Devices (2025)',
+      'Specialized · Rehab',
+      [
+        'Disabling Condition',
+        'PM&R assessment',
+        'Functional assessment',
+        'Check PhilHealth rehab / Z / assistive-device package',
+        'Preauthorization if required',
+        'Therapy / device',
+        'Outcome assessment',
+        'Claim',
+        'Follow-up rehabilitation',
+      ],
+      <>
+        <div className="section-label">GCMCC should screen</div>
+        <ul className="checklist" style={{ marginBottom: 12 }}>
+          <li>Stroke survivors</li>
+          <li>Spinal cord injuries</li>
+          <li>Amputees</li>
+          <li>Neurologic disease</li>
+          <li>Post-trauma patients</li>
+          <li>Post-ICU disability</li>
+          <li>Cancer rehabilitation</li>
+          <li>Patients requiring wheelchairs / walkers / crutches / canes</li>
+        </ul>
+        <div className="note-box blue" style={{ marginBottom: 12 }}>
+          PhilHealth introduced a broader <strong>Physical Medicine, Rehabilitation Services and
+          Assistive Mobility Devices</strong> benefit in 2025. GCMCC is currently not accredited but
+          will apply for accreditation. The Rehab coordinator should make an appropriate referral to
+          GMCL if there is a need.
+        </div>
+      </>,
+    )
+
+  const renderDialysisFlow = () =>
+    renderInteractivePathway(
+      'Hemodialysis Pathway',
+      'CKD Stage 5 · up to 156 sessions/year',
+      'Specialized · Hemodialysis',
+      [
+        'CKD Patient',
+        'Nephrologist assessment',
+        'CKD Stage 5 requiring HD?',
+        'PhilHealth Dialysis Database requirements',
+        'Accredited dialysis facility',
+        'Treatment session',
+        'Document clinically required: medications, laboratories, dialysis supplies, professional/facility services',
+        'PhilHealth deduction',
+        'eClaims',
+        'Track yearly sessions',
+      ],
+      <div className="note-box blue" style={{ marginBottom: 12 }}>
+        Current PhilHealth coverage provides up to <strong>156 hemodialysis sessions per calendar
+        year</strong> for qualified CKD Stage 5 patients, at a package rate of{' '}
+        <strong>₱6,350 per treatment session</strong>. GCMCC additionally screens renal patients for
+        Arteriovenous fistula insertion and IJ catheter insertion.
+      </div>,
+    )
 
   // ---------- BENEFIT DETAIL (SCREEN 5) ----------
   const renderBenefitDetail = () => {
@@ -1319,6 +1814,7 @@ export default function App() {
     if (detailView === 'z-flow') return renderZFlow()
     if (detailView === 'animal-flow') return renderAnimalFlow()
     if (detailView === 'rehab-flow') return renderRehabFlow()
+    if (detailView === 'dialysis-flow') return renderDialysisFlow()
     if (yakapSub === 'cancer' && cancerStep) return renderCancerFlow()
     if (yakapSub === 'gamot') return renderGamotFlow()
 
@@ -1358,7 +1854,14 @@ export default function App() {
           </div>
           <div className="nav-row">
             <button className="btn btn-outline" onClick={goBack}>← Back</button>
-            <button className="btn btn-primary" onClick={() => setDetailView('acr-flow')}>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setProcessStep(0)
+                setAcrPackage(null)
+                setDetailView('acr-flow')
+              }}
+            >
               View Inpatient ACR Flow →
             </button>
             <button className="btn btn-primary" onClick={goToCoordination}>
@@ -1421,7 +1924,7 @@ export default function App() {
     }
 
     // YAKAP Standard
-    if (benefitType === 'opd' && yakapSub === 'standard') {
+    if (benefitType === 'yakap' && yakapSub === 'standard') {
       const yakapSteps = [
         {
           title: 'OPD / Discharged Patient',
@@ -1565,14 +2068,22 @@ export default function App() {
     }
 
     // Special Packages
-    if (benefitType === 'special' && specialPkg) {
+    if (
+      (benefitType === 'daysurgery' || benefitType === 'specialized') &&
+      specialPkg
+    ) {
       const titles: Record<string, string> = {
+        woundcare: 'Woundcare',
+        endoscopy: 'Endoscopy',
+        hsg: 'HSG',
+        dialysis: 'Hemodialysis',
+        chemo: 'Chemotherapy',
+        radio: 'Radiotherapy',
+        blood: 'Blood Transfusion',
+        animalbite: 'Animal Bite Package',
+        rehab: 'Rehab Package',
         ami: 'AMI Package',
         maternity: 'Maternity & New Born Package',
-        rehab: 'Rehab Package',
-        dialysis: 'Dialysis Package',
-        animalbite: 'Animal Bite Package',
-        daysurgery: 'Day Surgery Package',
       }
 
       if (specialPkg === 'animalbite') {
@@ -1582,7 +2093,7 @@ export default function App() {
             <div className="result-header blue">
               <h2>Animal Bite Package</h2>
               <p>₱5,850 · Accredited ABTC pathway</p>
-              <div className="badge">Special Package</div>
+              <div className="badge">Specialized Therapy</div>
             </div>
             <div className="component-list">
               <div className="component-card">
@@ -1595,11 +2106,14 @@ export default function App() {
             </div>
             <div className="nav-row">
               <button className="btn btn-outline" onClick={goBack}>← Back</button>
-              <button className="btn btn-primary" onClick={() => setDetailView('animal-flow')}>
-                View Full Animal Bite Pathway →
-              </button>
-              <button className="btn btn-primary" onClick={goToCoordination}>
-                Continue to Benefit Coordination →
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setProcessStep(0)
+                  setDetailView('animal-flow')
+                }}
+              >
+                Start Animal Bite Pathway →
               </button>
             </div>
           </div>
@@ -1613,7 +2127,7 @@ export default function App() {
             <div className="result-header blue">
               <h2>Rehab Package</h2>
               <p>Physical Medicine, Rehabilitation & Assistive Devices</p>
-              <div className="badge">Special Package</div>
+              <div className="badge">Specialized Therapy</div>
             </div>
             <div className="component-list">
               <div className="component-card">
@@ -1626,11 +2140,48 @@ export default function App() {
             </div>
             <div className="nav-row">
               <button className="btn btn-outline" onClick={goBack}>← Back</button>
-              <button className="btn btn-primary" onClick={() => setDetailView('rehab-flow')}>
-                View Full Rehabilitation Pathway →
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setProcessStep(0)
+                  setDetailView('rehab-flow')
+                }}
+              >
+                Start Rehabilitation Pathway →
               </button>
-              <button className="btn btn-primary" onClick={goToCoordination}>
-                Continue to Benefit Coordination →
+            </div>
+          </div>
+        )
+      }
+
+      if (specialPkg === 'dialysis') {
+        return (
+          <div className="screen">
+            <PathBreadcrumb path={path} />
+            <div className="result-header blue">
+              <h2>Hemodialysis</h2>
+              <p>CKD Stage 5 · ₱6,350 per session · up to 156 sessions/year</p>
+              <div className="badge">Specialized Therapy</div>
+            </div>
+            <div className="component-list">
+              <div className="component-card">
+                <div className="comp-icon">🩺</div>
+                <div>
+                  <h4>Package Application</h4>
+                  <p>PhilHealth Dialysis Database requirements and accredited facility pathway.</p>
+                </div>
+              </div>
+            </div>
+            <div className="nav-row">
+              <button className="btn btn-outline" onClick={goBack}>← Back</button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setProcessStep(0)
+                  setDetailView('dialysis-flow')
+                }}
+              >
+                Start Hemodialysis Pathway →
               </button>
             </div>
           </div>
@@ -1704,7 +2255,14 @@ export default function App() {
           </div>
           <div className="nav-row">
             <button className="btn btn-outline" onClick={goBack}>← Back</button>
-            <button className="btn btn-primary" onClick={() => setDetailView('z-flow')}>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setProcessStep(0)
+                setZQualified(null)
+                setDetailView('z-flow')
+              }}
+            >
               View Full Z Benefits Process →
             </button>
             <button className="btn btn-primary" onClick={goToCoordination}>

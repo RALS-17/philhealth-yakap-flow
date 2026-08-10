@@ -170,33 +170,76 @@ h1 {
   gap: 14px;
 }
 
+/* ========== CLICKABLE BUTTON CARDS ========== */
 .choice-card {
   background: var(--card);
-  border: 1.5px solid var(--border);
+  border: 2px solid var(--blue);
   border-radius: var(--radius);
-  padding: 18px 16px;
+  padding: 18px 16px 22px;
   cursor: pointer;
   transition: all 0.2s ease;
   text-align: left;
-  box-shadow: var(--shadow);
+  box-shadow: 0 4px 14px rgba(19, 72, 243, 0.12);
   width: 100%;
   font-family: inherit;
   position: relative;
   overflow: hidden;
 }
 
+/* Clear "button" cue */
+.choice-card::after {
+  content: 'Tap to select →';
+  position: absolute;
+  bottom: 8px;
+  right: 14px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--blue);
+  opacity: 0.75;
+}
+
 .choice-card:hover {
   transform: translateY(-3px);
-  border-color: var(--blue);
-  box-shadow: 0 12px 28px rgba(19, 72, 243, 0.14);
+  border-color: var(--blue-dark);
+  background: var(--blue-light);
+  box-shadow: 0 12px 28px rgba(19, 72, 243, 0.2);
 }
 
-.choice-card.er-card:hover {
+.choice-card:hover::after {
+  opacity: 1;
+  content: 'Tap to select →';
+}
+
+.choice-card:active {
+  transform: translateY(0);
+}
+
+/* ER (red) clickable */
+.choice-card.er-card {
   border-color: #e11d48;
+  box-shadow: 0 4px 14px rgba(225, 29, 72, 0.12);
+}
+.choice-card.er-card::after {
+  color: #e11d48;
+}
+.choice-card.er-card:hover {
+  border-color: #be123c;
+  background: #fff1f2;
+  box-shadow: 0 12px 28px rgba(225, 29, 72, 0.18);
 }
 
-.choice-card.green-card:hover {
+/* Green clickable */
+.choice-card.green-card {
   border-color: var(--green);
+  box-shadow: 0 4px 14px rgba(61, 133, 43, 0.12);
+}
+.choice-card.green-card::after {
+  color: var(--green);
+}
+.choice-card.green-card:hover {
+  border-color: var(--green-dark);
+  background: var(--green-light);
+  box-shadow: 0 12px 28px rgba(61, 133, 43, 0.18);
 }
 
 .choice-card .icon {
@@ -235,6 +278,7 @@ h1 {
 .choice-card p {
   font-size: 0.82rem;
   color: var(--muted);
+  margin-bottom: 6px;
 }
 
 .choice-card ul {
@@ -242,6 +286,38 @@ h1 {
   padding-left: 16px;
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+/* ========== DISPLAY-ONLY INFO CARDS (not clickable) ========== */
+.component-card {
+  cursor: default;
+}
+
+.component-card:hover {
+  transform: none;
+  box-shadow: 0 3px 10px rgba(19, 72, 243, 0.04);
+}
+
+/* Display cards that use choice-card look but are not buttons */
+.choice-card[style*='cursor: default'],
+.choice-card.info-only {
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+  cursor: default;
+  background: #f8fafc;
+}
+
+.choice-card[style*='cursor: default']::after,
+.choice-card.info-only::after {
+  content: none;
+}
+
+.choice-card[style*='cursor: default']:hover,
+.choice-card.info-only:hover {
+  transform: none;
+  background: #f8fafc;
+  border-color: var(--border);
+  box-shadow: var(--shadow);
 }
 
 /* Level badges */
@@ -322,14 +398,15 @@ h1 {
 }
 
 .component-card {
-  background: var(--card);
+  background: #f8fafc;
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 13px 15px;
   display: flex;
   gap: 12px;
   align-items: flex-start;
-  box-shadow: 0 3px 10px rgba(19, 72, 243, 0.04);
+  box-shadow: none;
+  cursor: default;
 }
 
 .component-card .comp-icon {

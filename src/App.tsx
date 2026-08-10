@@ -235,13 +235,13 @@ export default function App() {
       // Leave detail / package screen → intermediate choice (screen 4)
       // Always land on a renderable screen (never blank)
       clearSubState()
-      setPath((p) => p.slice(0, 4))
-      // Z-BEN has no intermediate screen 4 content beyond detail — go to classification
-      if (benefitType === 'zbenefit') {
+      // ER and Z-BEN have no intermediate choice screen — return to Clinical Classification
+      if (benefitType === 'zbenefit' || benefitType === 'er') {
         setBenefitType(null)
         setPath((p) => p.slice(0, 3))
         setScreen(3)
       } else {
+        setPath((p) => p.slice(0, 4))
         setScreen(4)
       }
       return
@@ -302,6 +302,13 @@ export default function App() {
       zbenefit: 'Z-BEN',
     }
     setBenefitType(type)
+    // ER goes directly to Admissible inpatient pathway (no Non-Admissible choice)
+    if (type === 'er') {
+      setErSub('admissible')
+      setPath((p) => [...p, labels[type], 'Admissible (ACR / NBB)'])
+      setScreen(5)
+      return
+    }
     setPath((p) => [...p, labels[type]])
     setScreen(4)
   }
@@ -446,8 +453,6 @@ export default function App() {
           <p>
             <strong>Admissible:</strong> Paying ACR · Indigent NBB · Enhanced Special Inpatient
             Packages
-            <br />
-            <strong>Non-Admissible:</strong> OECB
           </p>
         </button>
         <button className="choice-card green-card" onClick={() => selectBenefit('yakap')}>
@@ -484,28 +489,8 @@ export default function App() {
   // ---------- SCREEN 4: intermediate choices ----------
   const renderScreen4 = () => {
     if (benefitType === 'er') {
-      return (
-        <div className="screen">
-          <PathBreadcrumb path={path} />
-          <div className="section-title">Emergency Ecosystem</div>
-          <p className="section-desc">Every ER patient undergoes OECB screening. Is the patient admissible?</p>
-          <div className="card-grid">
-            <button className="choice-card er-card" onClick={() => selectErSub('admissible')}>
-              <span className="level-badge l1">ADMISSIBLE</span>
-              <h3>Admissible</h3>
-              <p>1. Paying: ACR<br />2. Indigent: NBB<br />3. Enhanced Special Inpatient Packages</p>
-            </button>
-            <button className="choice-card" onClick={() => selectErSub('non-admissible')}>
-              <span className="level-badge l5">NON-ADMISSIBLE</span>
-              <h3>Non-Admissible (OECB)</h3>
-              <p>Outpatient Emergency Care Benefit<br />Resolved within 24 hours</p>
-            </button>
-          </div>
-          <div className="nav-row">
-            <button className="btn btn-outline" onClick={goBack}>← Back</button>
-          </div>
-        </div>
-      )
+      // ER skips intermediate choice and goes straight to Admissible detail
+      return renderBenefitDetail()
     }
 
     if (benefitType === 'yakap') {
@@ -1227,6 +1212,87 @@ export default function App() {
       </div>
     )
   }
+
+  // PhilHealth YAKAP medicine lists (CY 2026)
+  const GAMOT_21 = [
+    'Amoxicillin',
+    'Ciprofloxacin',
+    'Clarithromycin',
+    'Co-amoxiclav',
+    'Co-trimoxazole',
+    'Nitrofurantoin',
+    'Aspirin',
+    'Fluticasone + Salmeterol',
+    'Prednisone',
+    'Salbutamol',
+    'Simvastatin',
+    'Chlorphenamine',
+    'Oral Rehydration Salts',
+    'Paracetamol',
+    'Gliclazide',
+    'Metformin',
+    'Amlodipine',
+    'Enalapril',
+    'Hydrochlorothiazide',
+    'Losartan',
+    'Metoprolol',
+  ]
+  const EGAMOT_54 = [
+    'Albendazole',
+    'Azithromycin',
+    'Cefixime',
+    'Cefuroxime',
+    'Clindamycin',
+    'Clotrimazole',
+    'Cloxacillin',
+    'Doxycycline',
+    'Erythromycin',
+    'Fluconazole',
+    'Ketoconazole',
+    'Mebendazole',
+    'Metronidazole',
+    'Oseltamivir',
+    'Tobramycin',
+    'Clopidogrel',
+    'Budesonide + Formoterol',
+    'Ipratropium',
+    'Montelukast',
+    'Ipratropium + Salbutamol',
+    'Tiotropium',
+    'Aluminum Hydroxide + Magnesium Hydroxide',
+    'Butamirate',
+    'Celecoxib',
+    'Cetirizine',
+    'Colchicine',
+    'Diphenhydramine',
+    'Ferrous Salt (Iron Preparations)',
+    'Folic acid + Iron Ferrous',
+    'Ibuprofen',
+    'Lagundi (Vitex Negundo)',
+    'Loratadine',
+    'Mefenamic Acid',
+    'Naproxen',
+    'Omeprazole',
+    'Zinc',
+    'Dapagliflozin',
+    'Atorvastatin',
+    'Fenofibrate',
+    'Rosuvastatin',
+    'Atenolol',
+    'Captopril',
+    'Clonidine',
+    'Diltiazem',
+    'Enalapril + Hydrochlorothiazide',
+    'Isosorbide Dinitrate',
+    'Isosorbide Mononitrate',
+    'Methyldopa',
+    'Tamsulosin',
+    'Telmisartan',
+    'Telmisartan + Hydrochlorothiazide',
+    'Valsartan',
+    'Valsartan + Hydrochlorothiazide',
+    'Gabapentin',
+  ]
 
   // ---------- GAMOT FLOW (matches YAKAP Medicine & Laboratory Process Flow) ----------
   const renderGamotFlow = () => {

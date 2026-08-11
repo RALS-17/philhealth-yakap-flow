@@ -5,8 +5,8 @@
   --green: #3d852b;
   --green-dark: #2d6420;
   --green-light: #eaf5e6;
-  --text: #1a2b3c;
-  --muted: #5a6f82;
+  --text: #142433;
+  --muted: #3d5163;
   --border: #d0d9e8;
   --card: #ffffff;
   --radius: 14px;
@@ -24,7 +24,14 @@ body {
   background: linear-gradient(165deg, #eef2ff 0%, #f4f7fc 40%, #eef8f0 100%);
   color: var(--text);
   min-height: 100vh;
-  line-height: 1.5;
+  line-height: 1.55;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+p {
+  font-weight: 500;
+  color: var(--text);
 }
 
 .container {
@@ -63,25 +70,28 @@ header {
 
 .brand-text strong {
   display: block;
-  font-size: 0.95rem;
+  font-size: 1rem;
+  font-weight: 700;
   color: var(--blue);
 }
 
 .brand-text span {
-  font-size: 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
   color: var(--muted);
 }
 
 h1 {
-  font-size: clamp(1.25rem, 3.5vw, 1.55rem);
-  font-weight: 700;
+  font-size: clamp(1.3rem, 3.5vw, 1.65rem);
+  font-weight: 800;
   color: var(--blue-dark);
   margin-bottom: 4px;
 }
 
 .tagline {
   color: var(--muted);
-  font-size: 0.88rem;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 /* Progress */
@@ -127,7 +137,8 @@ h1 {
 }
 
 .path {
-  font-size: 0.78rem;
+  font-size: 0.85rem;
+  font-weight: 600;
   color: var(--muted);
   margin-bottom: 14px;
   display: flex;
@@ -151,14 +162,15 @@ h1 {
 }
 
 .section-title {
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-size: 1.15rem;
+  font-weight: 800;
   color: var(--blue-dark);
   margin-bottom: 6px;
 }
 
 .section-desc {
-  font-size: 0.88rem;
+  font-size: 0.95rem;
+  font-weight: 600;
   color: var(--muted);
   margin-bottom: 16px;
 }
@@ -244,10 +256,10 @@ h1 {
   position: absolute;
   bottom: 8px;
   right: 14px;
-  font-size: 0.7rem;
-  font-weight: 600;
+  font-size: 0.78rem;
+  font-weight: 700;
   color: var(--blue);
-  opacity: 0.75;
+  opacity: 0.85;
   z-index: 1;
 }
 
@@ -315,7 +327,8 @@ h1 {
 }
 
 .choice-card h3 {
-  font-size: 1rem;
+  font-size: 1.08rem;
+  font-weight: 800;
   margin-bottom: 5px;
   color: var(--blue-dark);
 }
@@ -329,15 +342,17 @@ h1 {
 }
 
 .choice-card p {
-  font-size: 0.82rem;
-  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
   margin-bottom: 6px;
 }
 
 .choice-card ul {
   margin-top: 8px;
   padding-left: 16px;
-  font-size: 0.8rem;
+  font-size: 0.88rem;
+  font-weight: 600;
   color: var(--muted);
 }
 
@@ -381,9 +396,9 @@ h1 {
 /* Level badges */
 .level-badge {
   display: inline-block;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 2px 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 3px 9px;
   border-radius: 999px;
   margin-bottom: 8px;
   color: white;
@@ -431,13 +446,15 @@ h1 {
 }
 
 .result-header h2 {
-  font-size: 1.2rem;
+  font-size: 1.28rem;
+  font-weight: 800;
   margin-bottom: 4px;
 }
 
 .result-header p {
-  opacity: 0.92;
-  font-size: 0.88rem;
+  opacity: 0.95;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .badge {
@@ -445,9 +462,9 @@ h1 {
   background: rgba(255, 255, 255, 0.22);
   padding: 3px 10px;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   margin-top: 8px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .component-list {
@@ -483,21 +500,24 @@ h1 {
 }
 
 .component-card h4 {
-  font-size: 0.92rem;
+  font-size: 1rem;
+  font-weight: 800;
   margin-bottom: 2px;
   color: var(--blue-dark);
 }
 
 .component-card p {
-  font-size: 0.8rem;
-  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .note-box {
   margin-top: 14px;
   padding: 12px 14px;
   border-radius: 10px;
-  font-size: 0.84rem;
+  font-size: 0.92rem;
+  font-weight: 600;
   border: 1px solid;
 }
 
@@ -520,8 +540,8 @@ h1 {
 }
 
 .section-label {
-  font-size: 0.75rem;
-  font-weight: 700;
+  font-size: 0.82rem;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
@@ -540,7 +560,8 @@ h1 {
 
 .navigator-panel h3 {
   color: var(--green-dark);
-  font-size: 1.05rem;
+  font-size: 1.12rem;
+  font-weight: 800;
   margin-bottom: 10px;
   display: flex;
   align-items: center;
@@ -557,7 +578,8 @@ h1 {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  font-size: 0.88rem;
+  font-size: 0.95rem;
+  font-weight: 600;
   color: var(--text);
   padding: 8px 10px;
   background: var(--green-light);
@@ -566,7 +588,7 @@ h1 {
 
 .navigator-list li span {
   color: var(--green);
-  font-weight: 700;
+  font-weight: 800;
 }
 
 /* Buttons */
@@ -580,9 +602,9 @@ h1 {
 .btn {
   border: none;
   border-radius: 10px;
-  padding: 11px 18px;
-  font-size: 0.9rem;
-  font-weight: 600;
+  padding: 12px 20px;
+  font-size: 0.98rem;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
   display: inline-flex;
@@ -637,7 +659,8 @@ h1 {
 }
 
 .reminders h4 {
-  font-size: 0.85rem;
+  font-size: 0.95rem;
+  font-weight: 800;
   color: var(--blue-dark);
   margin-bottom: 10px;
 }
@@ -646,8 +669,9 @@ h1 {
   list-style: none;
   display: grid;
   gap: 6px;
-  font-size: 0.8rem;
-  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .reminders li::before {
@@ -659,7 +683,8 @@ h1 {
 .footer-bar {
   margin-top: 24px;
   text-align: center;
-  font-size: 0.78rem;
+  font-size: 0.88rem;
+  font-weight: 600;
   color: var(--muted);
   padding: 12px;
   background: rgba(255, 255, 255, 0.7);
@@ -669,6 +694,7 @@ h1 {
 
 .footer-bar strong {
   color: var(--blue);
+  font-weight: 800;
 }
 
 @media (max-width: 560px) {
@@ -690,7 +716,8 @@ h1 {
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.78rem;
+  font-size: 0.88rem;
+  font-weight: 600;
   min-width: 780px;
 }
 
@@ -699,7 +726,7 @@ h1 {
   color: white;
   text-align: left;
   padding: 10px 12px;
-  font-weight: 600;
+  font-weight: 800;
   white-space: nowrap;
 }
 
@@ -708,7 +735,8 @@ h1 {
   border-bottom: 1px solid var(--border);
   vertical-align: top;
   color: var(--text);
-  line-height: 1.4;
+  font-weight: 600;
+  line-height: 1.45;
 }
 
 .data-table tr:nth-child(even) td {
@@ -739,7 +767,8 @@ h1 {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 12px;
-  font-size: 0.86rem;
+  font-size: 0.92rem;
+  font-weight: 600;
 }
 
 .flow-steps .step-num {
@@ -761,7 +790,8 @@ h1 {
 }
 
 .section-block h4 {
-  font-size: 0.92rem;
+  font-size: 1.02rem;
+  font-weight: 800;
   color: var(--blue-dark);
   margin-bottom: 8px;
 }
@@ -770,7 +800,8 @@ h1 {
   list-style: none;
   display: grid;
   gap: 6px;
-  font-size: 0.84rem;
+  font-size: 0.92rem;
+  font-weight: 600;
 }
 
 .checklist li {
@@ -799,9 +830,9 @@ h1 {
   background: white;
   color: var(--muted);
   border-radius: 999px;
-  padding: 7px 14px;
-  font-size: 0.78rem;
-  font-weight: 600;
+  padding: 8px 14px;
+  font-size: 0.88rem;
+  font-weight: 700;
   cursor: pointer;
   font-family: inherit;
 }
@@ -836,7 +867,8 @@ h1 {
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  font-size: 0.78rem;
+  font-size: 0.86rem;
+  font-weight: 600;
   color: var(--text);
   padding: 5px 6px;
   border-radius: 6px;
@@ -847,9 +879,9 @@ h1 {
 .med-num {
   flex-shrink: 0;
   min-width: 18px;
-  font-weight: 700;
+  font-weight: 800;
   color: var(--blue);
-  font-size: 0.72rem;
+  font-size: 0.8rem;
 }
 
 @media (max-width: 700px) {

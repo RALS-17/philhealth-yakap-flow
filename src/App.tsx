@@ -399,7 +399,7 @@ export default function App() {
     const labels: Record<string, string> = {
       er: 'ER',
       opd: 'OPD',
-      direct: 'Direct Admission / Procedure / Maternity',
+      direct: 'Direct Admission',
     }
     setEntryType(type)
     setPath(['Start', labels[type]])
@@ -516,11 +516,10 @@ export default function App() {
         </button>
         <button className="choice-card" onClick={() => selectEntry('direct')}>
           <div className="icon">📋</div>
-          <h3>Direct Admission / Procedure / Maternity</h3>
-          <p>Planned or specialty pathways</p>
+          <h3>Direct Admission</h3>
+          <p>Planned inpatient pathway</p>
           <ul>
             <li>Direct Admission → Inpatient ACR</li>
-            <li>Procedure · Maternity · Z-Benefit</li>
           </ul>
         </button>
       </div>
@@ -670,7 +669,7 @@ export default function App() {
             <div className="section-title">3A. For ER Patients – Triage & Benefit Determination</div>
             <p className="section-desc">
               Select the triage level. Levels 1–4 → then choose Admitted or OECB (27 symptoms).
-              Level 5 → YAKAP.
+              Level 5 → YAKAP (Indigent).
             </p>
             <div className="card-grid">
               <button
@@ -719,19 +718,19 @@ export default function App() {
                   setBenefitType('yakap')
                   setErSub(null)
                   setYakapSub(null)
-                  setPath((p) => [...p, 'Level 5 – Non-Urgent → YAKAP'])
+                  setPath((p) => [...p, 'Level 5 – Non-Urgent → YAKAP (Indigent)'])
                   setScreen(4)
                 }}
               >
                 <span className="level-badge l5">LEVEL 5</span>
                 <h3>Non-Urgent</h3>
-                <p>Endorsed to YAKAP Doctor for Consultation (YAKAP PHIC Benefits)</p>
+                <p>Endorsed to YAKAP Doctor for Consultation — YAKAP (Indigent)</p>
               </button>
             </div>
             <div className="note-box blue" style={{ marginTop: 14 }}>
               Levels 1–4: after ER management, choose <strong>Admitted</strong> (ACR / NBB) or{' '}
               <strong>OECB</strong> if the case matches one of the 27 Emergency Symptoms and is
-              discharged within 24 hours. Level 5 → YAKAP.
+              discharged within 24 hours. Level 5 → YAKAP (Indigent).
             </div>
             <div className="nav-row">
               <button className="btn btn-outline" onClick={goBack}>
@@ -3523,7 +3522,7 @@ export default function App() {
             <span>Medical Center · Canlubang</span>
           </div>
         </div>
-        <h1>PhilHealth Benefits Utilization Flow</h1>
+        <h1>GCare PhilHealth Benefits Utilization Program</h1>
         <p className="tagline">Global Care Canlubang PhilHealth Ecosystem</p>
       </header>
 

@@ -567,16 +567,6 @@ export default function App() {
       <p className="section-desc">Which PhilHealth benefit is applicable?</p>
 
       <div className="card-grid">
-        <button className="choice-card er-card" onClick={() => selectBenefit('er')}>
-          <div className="icon">🚨</div>
-          <h3>Emergency Room</h3>
-          <p>
-            <strong>Admissible:</strong> Paying ACR · Indigent NBB · Enhanced Special Inpatient
-            Packages
-            <br />
-            <strong>Non-Admissible:</strong> OECB
-          </p>
-        </button>
         <button className="choice-card green-card" onClick={() => selectBenefit('yakap')}>
           <div className="icon">💚</div>
           <h3>YAKAP</h3>

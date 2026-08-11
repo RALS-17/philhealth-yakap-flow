@@ -642,7 +642,7 @@ export default function App() {
                     setScreen(5)
                   }}
                 >
-                  <div className="icon">📋</div>
+                  <span className="level-badge l5">NON-ADMISSIBLE</span>
                   <h3>Non-Admissible – OECB</h3>
                   <p>
                     Matches one of the 27 Emergency Symptoms and is resolved / discharged within 24

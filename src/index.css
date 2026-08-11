@@ -186,6 +186,58 @@ h1 {
   overflow: hidden;
 }
 
+/* Semi-transparent Global Care logo watermark — centered (--logo-url set in App.tsx) */
+.choice-card::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 72px;
+  height: 72px;
+  background-image: var(--logo-url);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.12;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Same centered watermark on navigation buttons */
+.btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 28px;
+  height: 28px;
+  background-image: var(--logo-url);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  opacity: 0.2;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.btn > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Keep text/icons above the watermark */
+.choice-card > * {
+  position: relative;
+  z-index: 1;
+}
+
 /* Clear "button" cue */
 .choice-card::after {
   content: 'Tap to select →';
@@ -196,6 +248,7 @@ h1 {
   font-weight: 600;
   color: var(--blue);
   opacity: 0.75;
+  z-index: 1;
 }
 
 .choice-card:hover {
@@ -312,6 +365,11 @@ h1 {
   content: none;
 }
 
+.choice-card[style*='cursor: default']::before,
+.choice-card.info-only::before {
+  display: none;
+}
+
 .choice-card[style*='cursor: default']:hover,
 .choice-card.info-only:hover {
   transform: none;
@@ -357,19 +415,19 @@ h1 {
 }
 
 .result-header.blue {
-  background: linear-gradient(135deg, var(--blue), #3b6af5);
+  background: var(--blue);
 }
 .result-header.green {
-  background: linear-gradient(135deg, var(--green), #56a83f);
+  background: var(--green);
 }
 .result-header.red {
-  background: linear-gradient(135deg, #be123c, #e11d48);
+  background: #be123c;
 }
 .result-header.purple {
-  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  background: #7c3aed;
 }
 .result-header.teal {
-  background: linear-gradient(135deg, #0d9488, #14b8a6);
+  background: #0d9488;
 }
 
 .result-header h2 {
@@ -534,21 +592,27 @@ h1 {
 }
 
 .btn-primary {
-  background: var(--blue);
-  color: white;
+  background: var(--blue-light);
+  color: var(--blue-dark);
+  border: 2px solid var(--blue);
 }
 
 .btn-primary:hover {
-  background: var(--blue-dark);
+  background: #dce6ff;
+  border-color: var(--blue-dark);
+  color: var(--blue-dark);
 }
 
 .btn-green {
-  background: var(--green);
-  color: white;
+  background: var(--green-light);
+  color: var(--green-dark);
+  border: 2px solid var(--green);
 }
 
 .btn-green:hover {
-  background: var(--green-dark);
+  background: #d8efd0;
+  border-color: var(--green-dark);
+  color: var(--green-dark);
 }
 
 .btn-outline {
@@ -746,4 +810,57 @@ h1 {
   background: var(--blue);
   color: white;
   border-color: var(--blue);
+}
+
+/* Medicine list multi-column grid */
+.med-grid {
+  display: grid;
+  gap: 6px 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: var(--shadow);
+  margin: 8px 0 4px;
+}
+
+.med-grid-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.med-grid-2 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.med-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--text);
+  padding: 5px 6px;
+  border-radius: 6px;
+  background: #f8faff;
+  line-height: 1.35;
+}
+
+.med-num {
+  flex-shrink: 0;
+  min-width: 18px;
+  font-weight: 700;
+  color: var(--blue);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 700px) {
+  .med-grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 420px) {
+  .med-grid-3,
+  .med-grid-2 {
+    grid-template-columns: 1fr;
+  }
 }

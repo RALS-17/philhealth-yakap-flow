@@ -1,4 +1,87 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+
+/** PhilHealth YAKAP GAMOT (21 Core) — Hospital Pharmacy / Epress */
+const GAMOT_21 = [
+  'Amoxicillin',
+  'Ciprofloxacin',
+  'Clarithromycin',
+  'Co-amoxiclav',
+  'Co-trimoxazole',
+  'Nitrofurantoin',
+  'Aspirin',
+  'Fluticasone + Salmeterol',
+  'Prednisone',
+  'Salbutamol',
+  'Simvastatin',
+  'Chlorphenamine',
+  'Oral Rehydration Salts',
+  'Paracetamol',
+  'Gliclazide',
+  'Metformin',
+  'Amlodipine',
+  'Enalapril',
+  'Hydrochlorothiazide',
+  'Losartan',
+  'Metoprolol',
+]
+
+/** PhilHealth YAKAP E-GAMOT (54) — MedPure / Gamot App · under ₱20,000 annual limit */
+const EGAMOT_54 = [
+  'Albendazole',
+  'Azithromycin',
+  'Cefixime',
+  'Cefuroxime',
+  'Clindamycin',
+  'Clotrimazole',
+  'Cloxacillin',
+  'Doxycycline',
+  'Erythromycin',
+  'Fluconazole',
+  'Ketoconazole',
+  'Mebendazole',
+  'Metronidazole',
+  'Oseltamivir',
+  'Tobramycin',
+  'Clopidogrel',
+  'Budesonide + Formoterol',
+  'Ipratropium',
+  'Montelukast',
+  'Ipratropium + Salbutamol',
+  'Tiotropium',
+  'Aluminum Hydroxide + Magnesium Hydroxide',
+  'Butamirate',
+  'Celecoxib',
+  'Cetirizine',
+  'Colchicine',
+  'Diphenhydramine',
+  'Ferrous Salt (Iron Preparations)',
+  'Folic acid + Iron Ferrous',
+  'Ibuprofen',
+  'Lagundi (Vitex Negundo)',
+  'Loratadine',
+  'Mefenamic Acid',
+  'Naproxen',
+  'Omeprazole',
+  'Zinc',
+  'Dapagliflozin',
+  'Atorvastatin',
+  'Fenofibrate',
+  'Rosuvastatin',
+  'Atenolol',
+  'Captopril',
+  'Clonidine',
+  'Diltiazem',
+  'Enalapril + Hydrochlorothiazide',
+  'Isosorbide Dinitrate',
+  'Isosorbide Mononitrate',
+  'Methyldopa',
+  'Tamsulosin',
+  'Telmisartan',
+  'Telmisartan + Hydrochlorothiazide',
+  'Valsartan',
+  'Valsartan + Hydrochlorothiazide',
+  'Gabapentin',
+]
 
 type Screen = 1 | 2 | 3 | 4 | 5 | 6
 type EntryType = 'er' | 'opd' | 'direct' | null
@@ -85,6 +168,12 @@ export default function App() {
   const [cancerScreenType, setCancerScreenType] = useState<string | null>(null)
   const [zQualified, setZQualified] = useState<'yes' | 'no' | null>(null)
   const [nbbAccom, setNbbAccom] = useState<'basic' | 'nonbasic' | null>(null)
+
+  // Set logo URL for CSS watermarks on all clickable buttons
+  useEffect(() => {
+    const logoPath = `${import.meta.env.BASE_URL}global-care-logo.svg`
+    document.documentElement.style.setProperty('--logo-url', `url("${logoPath}")`)
+  }, [])
 
   const clearSubState = () => {
     setErSub(null)
@@ -1726,14 +1815,44 @@ export default function App() {
                 Selected branch: <strong>{gamotBranch || '—'}</strong>
               </div>
               {gamotBranch?.includes('Medpure') && (
-                <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
-                  Patient proceeds to <strong>Medpure</strong> for 54 Gamot dispensing via Gamot App.
-                </p>
+                <>
+                  <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
+                    Patient proceeds to <strong>Medpure</strong> for E-GAMOT (54) dispensing via Gamot
+                    App. Under ₱20,000 annual benefit limit per member.
+                  </p>
+                  <div className="section-label">E-GAMOT (54) medicine list</div>
+                  <div className="med-grid med-grid-3">
+                    {EGAMOT_54.map((name, i) => (
+                      <div key={name} className="med-item">
+                        <span className="med-num">{i + 1}</span>
+                        <span>{name}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="section-desc" style={{ marginTop: 8 }}>
+                    Covered under PhilHealth YAKAP for CY 2026
+                  </p>
+                </>
               )}
               {gamotBranch?.includes('Hospital Pharmacy') && (
-                <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
-                  Patient proceeds to <strong>Hospital Pharmacy</strong> for 21 Core (Epress) medicines.
-                </p>
+                <>
+                  <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
+                    Patient proceeds to <strong>Hospital Pharmacy</strong> for GAMOT (21 Core) via
+                    Epress.
+                  </p>
+                  <div className="section-label">GAMOT (21 Core) medicine list</div>
+                  <div className="med-grid med-grid-3">
+                    {GAMOT_21.map((name, i) => (
+                      <div key={name} className="med-item">
+                        <span className="med-num">{i + 1}</span>
+                        <span>{name}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="section-desc" style={{ marginTop: 8 }}>
+                    Covered under PhilHealth YAKAP for CY 2026
+                  </p>
+                </>
               )}
               {gamotBranch?.includes('Lab') && (
                 <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
@@ -3411,10 +3530,10 @@ export default function App() {
           />
           <div className="brand-text">
             <strong>GLOBAL CARE</strong>
-            <span>Canlubang</span>
+            <span>Medical Center · Canlubang</span>
           </div>
         </div>
-        <h1>Gcare PhilHealth Benefits Utilization Program</h1>
+        <h1>PhilHealth Benefits Utilization Flow</h1>
         <p className="tagline">Global Care Canlubang PhilHealth Ecosystem</p>
       </header>
 
@@ -3431,7 +3550,7 @@ export default function App() {
         <strong>OUR COMMITMENT:</strong> Right Benefit. Right Patient. Right Time.
         <br />
         We Care. We Guide. We Serve. · Global Care Medical Center – Canlubang
-      </div>x
+      </div>
     </div>
   )
 }

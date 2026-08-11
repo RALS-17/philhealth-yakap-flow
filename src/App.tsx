@@ -3519,7 +3519,7 @@ export default function App() {
           />
           <div className="brand-text">
             <strong>GLOBAL CARE</strong>
-            <span>Medical Center · Canlubang</span>
+            <span>Canlubang</span>
           </div>
         </div>
         <h1>GCare PhilHealth Benefits Utilization Program</h1>

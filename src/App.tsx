@@ -85,7 +85,19 @@ const EGAMOT_54 = [
 
 type Screen = 1 | 2 | 3 | 4 | 5 | 6
 type EntryType = 'er' | 'opd' | 'direct' | null
-type BenefitType = 'er' | 'yakap' | 'daysurgery' | 'specialized' | 'zbenefit' | null
+type BenefitType =
+  | 'er'
+  | 'yakap'
+  | 'daysurgery'
+  | 'specialized'
+  | 'zbenefit'
+  | 'diagnostic'
+  | 'consultation'
+  | null
+type DiagnosticBranch = 'laboratory' | 'radiology' | 'heartstation' | null
+type HeartPath = 'other' | 'nonstress' | null
+type ConsultPatient = 'private' | 'walkin' | 'indigent' | null
+type YesNo = 'yes' | 'no' | null
 type ErSub = 'admissible' | 'non-admissible' | null
 type SpecialPkg =
   | 'woundcare'
@@ -121,6 +133,7 @@ type DetailView =
   | 'rehab-flow'
   | 'dialysis-flow'
   | 'nbb-flow'
+  | 'daysurgery-flow'
 type ProcessStep = number // 0-based index for interactive process flows
 
 function PathBreadcrumb({ path }: { path: string[] }) {
@@ -168,6 +181,22 @@ export default function App() {
   const [cancerScreenType, setCancerScreenType] = useState<string | null>(null)
   const [zQualified, setZQualified] = useState<'yes' | 'no' | null>(null)
   const [nbbAccom, setNbbAccom] = useState<'basic' | 'nonbasic' | null>(null)
+  const [diagnosticBranch, setDiagnosticBranch] = useState<DiagnosticBranch>(null)
+  const [heartPath, setHeartPath] = useState<HeartPath>(null)
+  const [consultPatient, setConsultPatient] = useState<ConsultPatient>(null)
+  const [consultRx, setConsultRx] = useState<YesNo>(null)
+  const [consultYakapReg, setConsultYakapReg] = useState<YesNo>(null)
+  const [consultWantReg, setConsultWantReg] = useState<YesNo>(null)
+  const [consultGamot, setConsultGamot] = useState<YesNo>(null)
+  const [consultDiag, setConsultDiag] = useState<YesNo>(null)
+  const [consultCancer, setConsultCancer] = useState<YesNo>(null)
+  const [chemoZben, setChemoZben] = useState<YesNo>(null)
+  const [chemoPhicOk, setChemoPhicOk] = useState<YesNo>(null)
+  const [directPay, setDirectPay] = useState<'hmo' | 'cash' | null>(null)
+  const [bloodPatient, setBloodPatient] = useState<'hd' | 'onco' | null>(null)
+  const [animalVisit, setAnimalVisit] = useState<'first' | 'scheduled' | null>(null)
+  const [animalPay, setAnimalPay] = useState<'hmo' | 'cash' | null>(null)
+  const [animalLoa, setAnimalLoa] = useState<YesNo>(null)
 
   // Set logo URL for CSS watermarks on all clickable buttons
   useEffect(() => {
@@ -189,12 +218,171 @@ export default function App() {
     setAcrPackage(null)
     setZQualified(null)
     setNbbAccom(null)
+    setDiagnosticBranch(null)
+    setHeartPath(null)
+    setConsultPatient(null)
+    setConsultRx(null)
+    setConsultYakapReg(null)
+    setConsultWantReg(null)
+    setConsultGamot(null)
+    setConsultDiag(null)
+    setConsultCancer(null)
+    setChemoZben(null)
+    setChemoPhicOk(null)
+    setDirectPay(null)
+    setBloodPatient(null)
+    setAnimalVisit(null)
+    setAnimalPay(null)
+    setAnimalLoa(null)
   }
 
   const goBack = () => {
     if (screen === 1) return
 
     // --- Step back inside interactive process flows (stay on current detail) ---
+    if (benefitType === 'diagnostic' && diagnosticBranch && processStep > 0) {
+      if (diagnosticBranch === 'heartstation' && processStep === 3 && heartPath) {
+        setHeartPath(null)
+        setProcessStep(2)
+        return
+      }
+      setProcessStep((s) => s - 1)
+      return
+    }
+    if (benefitType === 'consultation' && processStep > 0) {
+      // Undo decision states when stepping back into a decision point
+      if (processStep === 3 && consultPatient) {
+        setConsultPatient(null)
+        setProcessStep(2)
+        return
+      }
+      if (consultPatient && (consultPatient === 'private' || consultPatient === 'walkin')) {
+        if (processStep === 5 && consultRx) {
+          setConsultRx(null)
+          setProcessStep(4)
+          return
+        }
+        if (consultRx === 'yes' && processStep === 6 && consultYakapReg) {
+          setConsultYakapReg(null)
+          setProcessStep(5)
+          return
+        }
+        if (consultRx === 'no' && processStep === 6 && consultWantReg) {
+          setConsultWantReg(null)
+          setProcessStep(5)
+          return
+        }
+        if (consultRx === 'yes' && consultYakapReg === 'yes' && processStep === 8 && consultGamot) {
+          setConsultGamot(null)
+          setProcessStep(7)
+          return
+        }
+      }
+      if (consultPatient === 'indigent') {
+        if (processStep === 6 && consultRx) {
+          setConsultRx(null)
+          setProcessStep(5)
+          return
+        }
+        if (consultRx === 'yes' && processStep === 8 && consultGamot) {
+          setConsultGamot(null)
+          setProcessStep(7)
+          return
+        }
+        if (consultRx === 'no' && processStep === 7 && consultDiag) {
+          setConsultDiag(null)
+          setProcessStep(6)
+          return
+        }
+        if (consultRx === 'no' && consultDiag === 'no' && processStep === 8 && consultCancer) {
+          setConsultCancer(null)
+          setProcessStep(7)
+          return
+        }
+      }
+      setProcessStep((s) => s - 1)
+      return
+    }
+    if (
+      benefitType === 'daysurgery' &&
+      (specialPkg === 'woundcare' || specialPkg === 'endoscopy' || specialPkg === 'hsg') &&
+      processStep > 0
+    ) {
+      setProcessStep((s) => s - 1)
+      return
+    }
+    if (benefitType === 'specialized' && specialPkg === 'dialysis' && processStep > 0) {
+      setProcessStep((s) => s - 1)
+      return
+    }
+    if (benefitType === 'specialized' && specialPkg === 'chemo' && processStep > 0) {
+      if (processStep === 2 && chemoZben) {
+        setChemoZben(null)
+        setProcessStep(1)
+        return
+      }
+      if (chemoZben === 'yes' && processStep === 6 && chemoPhicOk) {
+        setChemoPhicOk(null)
+        setProcessStep(5)
+        return
+      }
+      setProcessStep((s) => s - 1)
+      return
+    }
+    if (benefitType === 'specialized' && specialPkg === 'blood' && processStep > 0) {
+      if (processStep === 3 && bloodPatient) {
+        setBloodPatient(null)
+        setProcessStep(2)
+        return
+      }
+      setProcessStep((s) => s - 1)
+      return
+    }
+    if (benefitType === 'specialized' && specialPkg === 'animalbite' && processStep > 0) {
+      if (processStep === 2 && animalVisit) {
+        setAnimalVisit(null)
+        setAnimalPay(null)
+        setAnimalLoa(null)
+        setProcessStep(1)
+        return
+      }
+      if (animalVisit === 'first' && processStep === 6 && animalPay) {
+        setAnimalPay(null)
+        setAnimalLoa(null)
+        setProcessStep(5)
+        return
+      }
+      if (animalVisit === 'scheduled' && processStep === 5 && animalPay) {
+        setAnimalPay(null)
+        setAnimalLoa(null)
+        setProcessStep(4)
+        return
+      }
+      if (animalPay === 'hmo' && animalLoa) {
+        // step index for LOA decision depends on visit type
+        if (animalVisit === 'first' && processStep === 7) {
+          setAnimalLoa(null)
+          setProcessStep(6)
+          return
+        }
+        if (animalVisit === 'scheduled' && processStep === 6) {
+          setAnimalLoa(null)
+          setProcessStep(5)
+          return
+        }
+      }
+      setProcessStep((s) => s - 1)
+      return
+    }
+    if (entryType === 'direct' && !benefitType && processStep > 0) {
+      if (processStep === 11 && directPay) {
+        setDirectPay(null)
+        setProcessStep(10)
+        return
+      }
+      setProcessStep((s) => s - 1)
+      return
+    }
     if (yakapSub === 'gamot' && processStep > 0) {
       // Clear decision state when backing into a decision step
       if (processStep === 3 && gamotRx) {
@@ -241,7 +429,8 @@ export default function App() {
       (detailView === 'animal-flow' ||
         detailView === 'rehab-flow' ||
         detailView === 'dialysis-flow' ||
-        detailView === 'nbb-flow') &&
+        detailView === 'nbb-flow' ||
+        detailView === 'daysurgery-flow') &&
       processStep > 0
     ) {
       if (detailView === 'nbb-flow' && processStep === 4 && nbbAccom) {
@@ -341,8 +530,16 @@ export default function App() {
     }
 
     if (screen === 5) {
+      // Direct Admission flow → back to Start
+      if (entryType === 'direct' && !benefitType) {
+        clearSubState()
+        setEntryType(null)
+        setPath(['Start'])
+        setScreen(1)
+        return
+      }
       // Leave detail → intermediate (ER triage / YAKAP choices / etc.)
-      if (benefitType === 'zbenefit') {
+      if (benefitType === 'zbenefit' || benefitType === 'consultation') {
         clearSubState()
         setBenefitType(null)
         setPath((p) => p.slice(0, 3))
@@ -392,6 +589,22 @@ export default function App() {
     setAcrPackage(null)
     setZQualified(null)
     setNbbAccom(null)
+    setDiagnosticBranch(null)
+    setHeartPath(null)
+    setConsultPatient(null)
+    setConsultRx(null)
+    setConsultYakapReg(null)
+    setConsultWantReg(null)
+    setConsultGamot(null)
+    setConsultDiag(null)
+    setConsultCancer(null)
+    setChemoZben(null)
+    setChemoPhicOk(null)
+    setDirectPay(null)
+    setBloodPatient(null)
+    setAnimalVisit(null)
+    setAnimalPay(null)
+    setAnimalLoa(null)
   }
 
   const selectEntry = (type: EntryType) => {
@@ -411,6 +624,15 @@ export default function App() {
       setScreen(4)
       return
     }
+    // Direct Admission → interactive elective procedure flow
+    if (type === 'direct') {
+      setBenefitType(null)
+      setProcessStep(0)
+      setDirectPay(null)
+      setPath(['Start', 'Direct Admission'])
+      setScreen(5)
+      return
+    }
     setScreen(2)
   }
 
@@ -427,9 +649,26 @@ export default function App() {
       daysurgery: 'Day Surgery / Procedure',
       specialized: 'Specialized Therapy Services',
       zbenefit: 'Z-BEN',
+      diagnostic: 'Diagnostic',
+      consultation: 'Consultation',
     }
     setBenefitType(type)
+    setDiagnosticBranch(null)
+    setHeartPath(null)
+    setConsultPatient(null)
+    setConsultRx(null)
+    setConsultYakapReg(null)
+    setConsultWantReg(null)
+    setConsultGamot(null)
+    setConsultDiag(null)
+    setConsultCancer(null)
+    setProcessStep(0)
     setPath((p) => [...p, labels[type]])
+    // Consultation starts interactive flow immediately
+    if (type === 'consultation') {
+      setScreen(5)
+      return
+    }
     setScreen(4)
   }
 
@@ -460,6 +699,14 @@ export default function App() {
       maternity: 'Maternity & New Born',
     }
     setSpecialPkg(pkg)
+    setProcessStep(0)
+    setDetailView('main')
+    setChemoZben(null)
+    setChemoPhicOk(null)
+    setBloodPatient(null)
+    setAnimalVisit(null)
+    setAnimalPay(null)
+    setAnimalLoa(null)
     setPath((p) => [...p, labels[pkg]])
     setScreen(5)
   }
@@ -583,6 +830,16 @@ export default function App() {
             1. Hemodialysis · 2. Chemotherapy · 3. Radiotherapy · 4. Blood Transfusion · 5. Animal
             Bite · 6. Rehab
           </p>
+        </button>
+        <button className="choice-card" onClick={() => selectBenefit('diagnostic')}>
+          <div className="icon">🔬</div>
+          <h3>Diagnostic</h3>
+          <p>1. Laboratory · 2. Radiology · 3. Heart Station</p>
+        </button>
+        <button className="choice-card" onClick={() => selectBenefit('consultation')}>
+          <div className="icon">👨‍⚕️</div>
+          <h3>Consultation</h3>
+          <p>Private · Walk-In · Indigent · YAKAP / Gamot / Cancer routing</p>
         </button>
         <button className="choice-card" onClick={() => selectBenefit('zbenefit')}>
           <div className="icon">💜</div>
@@ -837,6 +1094,65 @@ export default function App() {
           </div>
           <div className="nav-row">
             <button className="btn btn-outline" onClick={goBack}>← Back</button>
+          </div>
+        </div>
+      )
+    }
+
+    if (benefitType === 'diagnostic') {
+      return (
+        <div className="screen">
+          <PathBreadcrumb path={path} />
+          <div className="section-title">Diagnostic</div>
+          <p className="section-desc">Select the diagnostic service pathway.</p>
+          <div className="card-grid">
+            <button
+              className="choice-card"
+              onClick={() => {
+                setDiagnosticBranch('laboratory')
+                setHeartPath(null)
+                setProcessStep(0)
+                setPath((p) => [...p, 'Laboratory'])
+                setScreen(5)
+              }}
+            >
+              <div className="icon">🧪</div>
+              <h3>1. Laboratory</h3>
+              <p>Charge slip → Cashier → Blood extraction / specimen → Discharged</p>
+            </button>
+            <button
+              className="choice-card"
+              onClick={() => {
+                setDiagnosticBranch('radiology')
+                setHeartPath(null)
+                setProcessStep(0)
+                setPath((p) => [...p, 'Radiology'])
+                setScreen(5)
+              }}
+            >
+              <div className="icon">📷</div>
+              <h3>2. Radiology</h3>
+              <p>Charge slip → Cashier → Procedure → Discharged</p>
+            </button>
+            <button
+              className="choice-card"
+              onClick={() => {
+                setDiagnosticBranch('heartstation')
+                setHeartPath(null)
+                setProcessStep(0)
+                setPath((p) => [...p, 'Heart Station'])
+                setScreen(5)
+              }}
+            >
+              <div className="icon">❤️</div>
+              <h3>3. Heart Station</h3>
+              <p>Registration → PHIC Coordinator → Other tests or Non-stress test</p>
+            </button>
+          </div>
+          <div className="nav-row">
+            <button className="btn btn-outline" onClick={goBack}>
+              ← Back
+            </button>
           </div>
         </div>
       )
@@ -2753,6 +3069,955 @@ export default function App() {
     if (yakapSub === 'cancer' && cancerStep) return renderCancerFlow()
     if (yakapSub === 'gamot') return renderGamotFlow()
 
+    // Direct Admission — Elective Procedure flowchart
+    if (entryType === 'direct' && !benefitType) {
+      type Step = {
+        title: string
+        body: string
+        choosePay?: boolean
+        end?: boolean
+      }
+
+      let steps: Step[] = [
+        {
+          title: 'Direct Admission',
+          body: 'Patient enters via Direct Admission.',
+        },
+        {
+          title: 'Elective Procedure',
+          body: 'Planned / elective procedure pathway.',
+        },
+        {
+          title: 'Admitting section (registration)',
+          body: 'Patient registers at the Admitting section.',
+        },
+        {
+          title: 'Coordinator',
+          body: 'Case is coordinated for elective admission and procedure.',
+        },
+        {
+          title: 'PCU Phil Benefits · Fill up form · Submit Reqs',
+          body: 'PCU completes PhilHealth benefits forms and submits requirements. ER triage (vital signs) is also done as needed.',
+        },
+        {
+          title: 'ER triage (Vital Signs)',
+          body: 'Vital signs taken / ER triage as required before transfer.',
+        },
+        {
+          title: 'Transfer (room of choice)',
+          body: 'Patient is transferred to the room of choice.',
+        },
+        {
+          title: 'Scheduled OR (For Procedure)',
+          body: 'Patient proceeds to the scheduled Operating Room for the procedure.',
+        },
+        {
+          title: 'For Monitoring (1–2 days)',
+          body: 'Post-procedure monitoring for 1–2 days.',
+        },
+        {
+          title: 'Order For Discharged',
+          body: 'Physician issues the discharge order.',
+        },
+        {
+          title: 'Billing · Deduct PHIC BEN',
+          body: 'Billing prepares the account and deducts PhilHealth benefits.',
+          choosePay: true,
+        },
+      ]
+
+      if (directPay === 'hmo') {
+        steps = [
+          ...steps,
+          {
+            title: 'HMO · APPROVED LOA',
+            body: 'HMO mode of payment with approved Letter of Authorization (LOA).',
+          },
+          {
+            title: 'Cashier',
+            body: 'Proceed to Cashier for any remaining transactions.',
+          },
+          {
+            title: 'Clearance',
+            body: 'Clearance is completed.',
+          },
+          {
+            title: 'Discharged',
+            body: 'Patient is discharged.',
+            end: true,
+          },
+        ]
+      } else if (directPay === 'cash') {
+        steps = [
+          ...steps,
+          {
+            title: 'Cash · Cashier Payment',
+            body: 'Cash mode of payment — settle at Cashier.',
+          },
+          {
+            title: 'Clearance',
+            body: 'Clearance is completed.',
+          },
+          {
+            title: 'Discharged',
+            body: 'Patient is discharged.',
+            end: true,
+          },
+        ]
+      }
+
+      const total = steps.length
+      const current = steps[processStep] || steps[0]
+      const isEnd = !!current.end
+      const atPay = !!current.choosePay && directPay === null
+
+      return (
+        <div className="screen">
+          <PathBreadcrumb path={path} />
+          <div className="result-header blue">
+            <h2>Direct Admission</h2>
+            <p>
+              Elective Procedure · Step {processStep + 1} of {total}
+            </p>
+            <div className="badge">Direct Admission</div>
+          </div>
+
+          <ProgressDots step={processStep + 1} total={total} />
+
+          <ul className="flow-steps" style={{ marginBottom: 16 }}>
+            {steps.map((s, i) => (
+              <li
+                key={`${s.title}-${i}`}
+                style={{
+                  opacity: i === processStep ? 1 : i < processStep ? 0.85 : 0.45,
+                  borderColor: i === processStep ? 'var(--blue)' : undefined,
+                  background: i === processStep ? 'var(--blue-light)' : undefined,
+                }}
+              >
+                <span
+                  className="step-num"
+                  style={{ background: i <= processStep ? 'var(--blue)' : 'var(--border)' }}
+                >
+                  {i + 1}
+                </span>
+                <strong>{s.title}</strong>
+              </li>
+            ))}
+          </ul>
+
+          <div className="section-block">
+            <h4>
+              Step {processStep + 1} — {current.title}
+            </h4>
+            <p style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 12 }}>{current.body}</p>
+
+            {atPay && (
+              <div className="card-grid" style={{ marginBottom: 12 }}>
+                <button
+                  className="choice-card green-card"
+                  onClick={() => {
+                    setDirectPay('hmo')
+                    setProcessStep(11)
+                    setPath((p) => [...p, 'HMO'])
+                  }}
+                >
+                  <h3>HMO</h3>
+                  <p>Approved LOA → Cashier → Clearance → Discharged</p>
+                </button>
+                <button
+                  className="choice-card"
+                  onClick={() => {
+                    setDirectPay('cash')
+                    setProcessStep(11)
+                    setPath((p) => [...p, 'Cash'])
+                  }}
+                >
+                  <h3>Cash</h3>
+                  <p>Cashier Payment → Clearance → Discharged</p>
+                </button>
+              </div>
+            )}
+
+            {isEnd && (
+              <div className="note-box green" style={{ marginBottom: 14 }}>
+                Pathway complete. Patient has been discharged.
+              </div>
+            )}
+
+            {!atPay && !isEnd && (
+              <button className="btn btn-primary" onClick={() => setProcessStep((s) => s + 1)}>
+                Next Step →
+              </button>
+            )}
+            {isEnd && (
+              <button className="btn btn-primary" onClick={restart}>
+                New Patient
+              </button>
+            )}
+          </div>
+
+          <div className="nav-row">
+            <button className="btn btn-outline" onClick={goBack}>
+              ← Back
+            </button>
+            {!isEnd && (
+              <button className="btn btn-outline" onClick={restart}>
+                New Patient
+              </button>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    // Consultation flowchart (Private / Walk-In / Indigent)
+    if (benefitType === 'consultation') {
+      type Step = {
+        title: string
+        body: string
+        choosePatient?: boolean
+        chooseRx?: boolean
+        chooseYakapReg?: boolean
+        chooseWantReg?: boolean
+        chooseGamot?: boolean
+        chooseDiag?: boolean
+        chooseCancer?: boolean
+        end?: boolean
+        linkCancer?: boolean
+        linkDiagnostic?: boolean
+        linkGamot?: boolean
+      }
+
+      const base: Step[] = [
+        {
+          title: 'Consultation',
+          body: 'Patient enters the Consultation pathway.',
+        },
+        {
+          title: 'Information (registration)',
+          body: 'Patient registers at Information.',
+        },
+        {
+          title: 'PHIC Coordinator',
+          body: 'PhilHealth Coordinator determines patient type.',
+          choosePatient: true,
+        },
+      ]
+
+      let steps: Step[] = [...base]
+
+      if (consultPatient === 'private' || consultPatient === 'walkin') {
+        steps = [
+          ...base,
+          {
+            title:
+              consultPatient === 'private' ? 'Consultant of Choice' : 'Consultant on Deck',
+            body:
+              consultPatient === 'private'
+                ? 'Patient proceeds with Consultant of Choice.'
+                : 'Patient proceeds with Consultant on Deck.',
+          },
+          {
+            title: 'PHIC Coordinator',
+            body: 'PHIC Coordinator checks if the patient has a prescription.',
+            chooseRx: true,
+          },
+        ]
+
+        if (consultRx === 'yes') {
+          steps = [
+            ...steps,
+            {
+              title: 'Registered under YAKAP?',
+              body: 'Confirm if the patient is already registered under YAKAP.',
+              chooseYakapReg: true,
+            },
+          ]
+          if (consultYakapReg === 'yes') {
+            steps = [
+              ...steps,
+              {
+                title: 'PHIC Coordinator',
+                body: 'PHIC Coordinator reviews the prescription.',
+              },
+              {
+                title: 'Check if prescription is under Gamot list',
+                body: 'Verify whether the prescribed medicines are under the Gamot list.',
+                chooseGamot: true,
+              },
+            ]
+            if (consultGamot === 'yes') {
+              steps = [
+                ...steps,
+                {
+                  title: 'YAKAP Coordinator / YAKAP Consultant (E-Prescription)',
+                  body: 'YAKAP Coordinator/Consultant prepares E-Prescription.',
+                },
+                {
+                  title: 'Endorse to MedPure for dispensing of Gamot',
+                  body: 'Patient is endorsed to MedPure for Gamot dispensing.',
+                  end: true,
+                  linkGamot: true,
+                },
+              ]
+            } else if (consultGamot === 'no') {
+              steps = [
+                ...steps,
+                {
+                  title: 'END',
+                  body: 'Prescription is not under Gamot list. Pathway ends.',
+                  end: true,
+                },
+              ]
+            }
+          } else if (consultYakapReg === 'no') {
+            steps = [
+              ...steps,
+              {
+                title: 'PHIC Coordinator',
+                body: 'Patient is not registered under YAKAP.',
+              },
+              {
+                title: 'Endorse to YAKAP Coordinator for YAKAP Registration',
+                body: 'Endorse patient to YAKAP Coordinator for registration.',
+                end: true,
+              },
+            ]
+          }
+        } else if (consultRx === 'no') {
+          steps = [
+            ...steps,
+            {
+              title: 'Ask if patient wants to register',
+              body: 'Ask the patient if they want to register under YAKAP.',
+              chooseWantReg: true,
+            },
+          ]
+          if (consultWantReg === 'no') {
+            steps = [
+              ...steps,
+              {
+                title: 'END',
+                body: 'Patient does not want to register. Pathway ends.',
+                end: true,
+              },
+            ]
+          } else if (consultWantReg === 'yes') {
+            steps = [
+              ...steps,
+              {
+                title: 'PHIC Coordinator',
+                body: 'PHIC Coordinator facilitates YAKAP registration endorsement.',
+              },
+              {
+                title: 'Endorse to YAKAP Coordinator for YAKAP Registration',
+                body: 'Endorse patient to YAKAP Coordinator for registration.',
+                end: true,
+              },
+            ]
+          }
+        }
+      } else if (consultPatient === 'indigent') {
+        steps = [
+          ...base,
+          {
+            title: 'PHIC Coordinator',
+            body: 'Indigent patient pathway — PHIC Coordinator assists.',
+          },
+          {
+            title: 'Endorse to YAKAP Coordinator for YAKAP Registration',
+            body: 'Endorse indigent patient to YAKAP Coordinator for registration.',
+          },
+          {
+            title: 'YAKAP Doctor Consultation',
+            body: 'Patient proceeds for YAKAP Doctor Consultation.',
+            chooseRx: true,
+          },
+        ]
+        if (consultRx === 'yes') {
+          steps = [
+            ...steps,
+            {
+              title: 'PHIC Coordinator',
+              body: 'PHIC Coordinator reviews the prescription.',
+            },
+            {
+              title: 'Check if prescription is under Gamot list',
+              body: 'Verify whether the prescribed medicines are under the Gamot list.',
+              chooseGamot: true,
+            },
+          ]
+          if (consultGamot === 'yes') {
+            steps = [
+              ...steps,
+              {
+                title: 'YAKAP Coordinator / YAKAP Consultant (E-Prescription)',
+                body: 'YAKAP Coordinator/Consultant prepares E-Prescription.',
+              },
+              {
+                title: 'Endorse to MedPure for dispensing of Gamot',
+                body: 'Patient is endorsed to MedPure for Gamot dispensing.',
+                end: true,
+                linkGamot: true,
+              },
+            ]
+          } else if (consultGamot === 'no') {
+            steps = [
+              ...steps,
+              {
+                title: 'END',
+                body: 'Prescription is not under Gamot list. Pathway ends.',
+                end: true,
+              },
+            ]
+          }
+        } else if (consultRx === 'no') {
+          steps = [
+            ...steps,
+            {
+              title: 'With request for Diagnostic procedure?',
+              body: 'Does the patient have a request for diagnostic procedure?',
+              chooseDiag: true,
+            },
+          ]
+          if (consultDiag === 'yes') {
+            steps = [
+              ...steps,
+              {
+                title: 'YAKAP Coordinator',
+                body: 'YAKAP Coordinator routes diagnostic request.',
+              },
+              {
+                title: 'Endorse to Radiology / Laboratory / Heart Station',
+                body: 'Endorse patient to the appropriate Diagnostic pathway.',
+                end: true,
+                linkDiagnostic: true,
+              },
+            ]
+          } else if (consultDiag === 'no') {
+            steps = [
+              ...steps,
+              {
+                title: 'Eligible for YAKAP Cancer Screening?',
+                body: 'Assess eligibility for YAKAP Cancer Screening.',
+                chooseCancer: true,
+              },
+            ]
+            if (consultCancer === 'yes') {
+              steps = [
+                ...steps,
+                {
+                  title: 'System Cancer Screening flow',
+                  body: 'Route patient to YAKAP Cancer Screening pathway.',
+                  end: true,
+                  linkCancer: true,
+                },
+              ]
+            } else if (consultCancer === 'no') {
+              steps = [
+                ...steps,
+                {
+                  title: 'END',
+                  body: 'Not eligible for Cancer Screening. Pathway ends.',
+                  end: true,
+                },
+              ]
+            }
+          }
+        }
+      }
+
+      const total = steps.length
+      const current = steps[processStep] || steps[0]
+      const isEnd = !!current.end
+
+      const choiceBtn = (
+        label: string,
+        desc: string,
+        onClick: () => void,
+        green = false,
+      ) => (
+        <button
+          key={label}
+          className={`choice-card ${green ? 'green-card' : ''}`}
+          onClick={onClick}
+        >
+          <h3>{label}</h3>
+          <p>{desc}</p>
+        </button>
+      )
+
+      return (
+        <div className="screen">
+          <PathBreadcrumb path={path} />
+          <div className="result-header blue">
+            <h2>Consultation</h2>
+            <p>
+              Interactive process · Step {processStep + 1} of {total}
+              {consultPatient
+                ? ` · ${
+                    consultPatient === 'private'
+                      ? 'Private'
+                      : consultPatient === 'walkin'
+                        ? 'Walk-In'
+                        : 'Indigent'
+                  }`
+                : ''}
+            </p>
+            <div className="badge">Consultation Pathway</div>
+          </div>
+
+          <ProgressDots step={processStep + 1} total={total} />
+
+          <ul className="flow-steps" style={{ marginBottom: 16 }}>
+            {steps.map((s, i) => (
+              <li
+                key={`${s.title}-${i}`}
+                style={{
+                  opacity: i === processStep ? 1 : i < processStep ? 0.85 : 0.45,
+                  borderColor: i === processStep ? 'var(--blue)' : undefined,
+                  background: i === processStep ? 'var(--blue-light)' : undefined,
+                }}
+              >
+                <span
+                  className="step-num"
+                  style={{ background: i <= processStep ? 'var(--blue)' : 'var(--border)' }}
+                >
+                  {i + 1}
+                </span>
+                <strong>{s.title}</strong>
+              </li>
+            ))}
+          </ul>
+
+          <div className="section-block">
+            <h4>
+              Step {processStep + 1} — {current.title}
+            </h4>
+            <p style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 12 }}>{current.body}</p>
+
+            {current.choosePatient && !consultPatient && (
+              <div className="card-grid" style={{ marginBottom: 12 }}>
+                {choiceBtn('Private', 'Consultant of Choice pathway', () => {
+                  setConsultPatient('private')
+                  setProcessStep(3)
+                  setPath((p) => [...p, 'Private'])
+                })}
+                {choiceBtn('Walk-In', 'Consultant on Deck pathway', () => {
+                  setConsultPatient('walkin')
+                  setProcessStep(3)
+                  setPath((p) => [...p, 'Walk-In'])
+                })}
+                {choiceBtn('Indigent', 'YAKAP registration & consultation pathway', () => {
+                  setConsultPatient('indigent')
+                  setProcessStep(3)
+                  setPath((p) => [...p, 'Indigent'])
+                }, true)}
+              </div>
+            )}
+
+            {current.chooseRx && consultRx === null && (
+              <div className="card-grid" style={{ marginBottom: 12 }}>
+                {choiceBtn('Yes — With prescription', 'Patient has a prescription', () => {
+                  setConsultRx('yes')
+                  setProcessStep((s) => s + 1)
+                }, true)}
+                {choiceBtn('No — Without prescription', 'Patient has no prescription', () => {
+                  setConsultRx('no')
+                  setProcessStep((s) => s + 1)
+                })}
+              </div>
+            )}
+
+            {current.chooseYakapReg && consultYakapReg === null && (
+              <div className="card-grid" style={{ marginBottom: 12 }}>
+                {choiceBtn('Yes — Registered under YAKAP', 'Already a YAKAP member', () => {
+                  setConsultYakapReg('yes')
+                  setProcessStep((s) => s + 1)
+                }, true)}
+                {choiceBtn('No — Not registered', 'Needs YAKAP registration', () => {
+                  setConsultYakapReg('no')
+                  setProcessStep((s) => s + 1)
+                })}
+              </div>
+            )}
+
+            {current.chooseWantReg && consultWantReg === null && (
+              <div className="card-grid" style={{ marginBottom: 12 }}>
+                {choiceBtn('Yes — Wants to register', 'Proceed to YAKAP registration', () => {
+                  setConsultWantReg('yes')
+                  setProcessStep((s) => s + 1)
+                }, true)}
+                {choiceBtn('No — Does not want to register', 'End pathway', () => {
+                  setConsultWantReg('no')
+                  setProcessStep((s) => s + 1)
+                })}
+              </div>
+            )}
+
+            {current.chooseGamot && consultGamot === null && (
+              <div className="card-grid" style={{ marginBottom: 12 }}>
+                {choiceBtn('Yes — Under Gamot list', 'E-Prescription → MedPure', () => {
+                  setConsultGamot('yes')
+                  setProcessStep((s) => s + 1)
+                }, true)}
+                {choiceBtn('No — Not under Gamot list', 'End pathway', () => {
+                  setConsultGamot('no')
+                  setProcessStep((s) => s + 1)
+                })}
+              </div>
+            )}
+
+            {current.chooseDiag && consultDiag === null && (
+              <div className="card-grid" style={{ marginBottom: 12 }}>
+                {choiceBtn('Yes — Diagnostic procedure needed', 'Endorse to Lab / Radiology / Heart', () => {
+                  setConsultDiag('yes')
+                  setProcessStep((s) => s + 1)
+                }, true)}
+                {choiceBtn('No — No diagnostic request', 'Check Cancer Screening eligibility', () => {
+                  setConsultDiag('no')
+                  setProcessStep((s) => s + 1)
+                })}
+              </div>
+            )}
+
+            {current.chooseCancer && consultCancer === null && (
+              <div className="card-grid" style={{ marginBottom: 12 }}>
+                {choiceBtn('Yes — Eligible for Cancer Screening', 'Open Cancer Screening flow', () => {
+                  setConsultCancer('yes')
+                  setProcessStep((s) => s + 1)
+                }, true)}
+                {choiceBtn('No — Not eligible', 'End pathway', () => {
+                  setConsultCancer('no')
+                  setProcessStep((s) => s + 1)
+                })}
+              </div>
+            )}
+
+            {isEnd && (
+              <div className="note-box green" style={{ marginBottom: 14 }}>
+                {current.title === 'END'
+                  ? 'Pathway complete.'
+                  : 'Pathway step complete. You may continue to a related service or start a new patient.'}
+              </div>
+            )}
+
+            {/* Continue for non-decision, non-end steps */}
+            {!current.choosePatient &&
+              !current.chooseRx &&
+              !current.chooseYakapReg &&
+              !current.chooseWantReg &&
+              !current.chooseGamot &&
+              !current.chooseDiag &&
+              !current.chooseCancer &&
+              !isEnd && (
+                <button className="btn btn-primary" onClick={() => setProcessStep((s) => s + 1)}>
+                  Next Step →
+                </button>
+              )}
+
+            {isEnd && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {current.linkGamot && (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setBenefitType('yakap')
+                      setYakapSub('gamot')
+                      setProcessStep(0)
+                      setGamotRx(null)
+                      setGamotBranch(null)
+                      setGamotDispensed(null)
+                      setPath((p) => [...p, 'Gamot Ecosystem'])
+                    }}
+                  >
+                    Open Gamot Pathway →
+                  </button>
+                )}
+                {current.linkDiagnostic && (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setBenefitType('diagnostic')
+                      setDiagnosticBranch(null)
+                      setHeartPath(null)
+                      setProcessStep(0)
+                      setPath((p) => [...p.slice(0, 3), 'Diagnostic'])
+                      setScreen(4)
+                    }}
+                  >
+                    Open Diagnostic →
+                  </button>
+                )}
+                {current.linkCancer && (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setBenefitType('yakap')
+                      setYakapSub('cancer')
+                      setCancerStep('risk')
+                      setCancerScreenType(null)
+                      setProcessStep(0)
+                      setPath((p) => [...p, 'YAKAP Cancer Screening'])
+                    }}
+                  >
+                    Open Cancer Screening →
+                  </button>
+                )}
+                <button className="btn btn-primary" onClick={restart}>
+                  New Patient
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="nav-row">
+            <button className="btn btn-outline" onClick={goBack}>
+              ← Back
+            </button>
+            {!isEnd && (
+              <button className="btn btn-outline" onClick={restart}>
+                New Patient
+              </button>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    // Diagnostic pathways (Laboratory / Radiology / Heart Station)
+    if (benefitType === 'diagnostic' && diagnosticBranch) {
+      type Step = { title: string; body: string; chooseHeart?: boolean }
+      let steps: Step[] = []
+
+      if (diagnosticBranch === 'laboratory') {
+        steps = [
+          {
+            title: 'Laboratory',
+            body: 'Diagnostic pathway: Laboratory selected.',
+          },
+          {
+            title: 'Laboratory Section (Charge slip)',
+            body: 'Proceed to Laboratory Section for charge slip.',
+          },
+          {
+            title: 'Cashier (Payment)',
+            body: 'Settle payment at the Cashier.',
+          },
+          {
+            title: 'Laboratory (Blood Extraction / Submission of Specimen)',
+            body: 'Blood extraction and/or submission of specimen at the Laboratory.',
+          },
+          {
+            title: 'Discharged',
+            body: 'Patient is discharged after laboratory service.',
+          },
+        ]
+      } else if (diagnosticBranch === 'radiology') {
+        steps = [
+          {
+            title: 'Radiology',
+            body: 'Diagnostic pathway: Radiology selected.',
+          },
+          {
+            title: 'Radiology Section (Charge slip)',
+            body: 'Proceed to Radiology Section for charge slip.',
+          },
+          {
+            title: 'Cashier (Payment)',
+            body: 'Settle payment at the Cashier.',
+          },
+          {
+            title: 'Radiology Section (Procedure)',
+            body: 'Radiology procedure is performed.',
+          },
+          {
+            title: 'Discharged',
+            body: 'Patient is discharged after radiology service.',
+          },
+        ]
+      } else {
+        // Heart Station — base steps then branch
+        const base: Step[] = [
+          {
+            title: 'Heart Station',
+            body: 'Diagnostic pathway: Heart Station selected.',
+          },
+          {
+            title: 'Information (registration)',
+            body: 'Patient registers at Information.',
+          },
+          {
+            title: 'PHIC Coordinator',
+            body: 'PhilHealth Coordinator reviews the case and routes to the correct Heart Station pathway.',
+            chooseHeart: true,
+          },
+        ]
+        if (!heartPath) {
+          steps = base
+        } else if (heartPath === 'other') {
+          steps = [
+            ...base,
+            {
+              title: 'Other tests',
+              body: 'Routed to other Heart Station tests.',
+            },
+            {
+              title: 'Heart Station (Charge slip)',
+              body: 'Obtain charge slip at Heart Station.',
+            },
+            {
+              title: 'Cashier (Payment)',
+              body: 'Settle payment at the Cashier.',
+            },
+            {
+              title: 'Heart Station (Procedure)',
+              body: 'Heart Station procedure / testing is performed.',
+            },
+            {
+              title: 'Discharged',
+              body: 'Patient is discharged after Heart Station service.',
+            },
+          ]
+        } else {
+          steps = [
+            ...base,
+            {
+              title: 'Non-stress test',
+              body: 'Routed to non-stress test pathway.',
+            },
+            {
+              title: 'Admitting section (registration)',
+              body: 'Patient registers at the Admitting section.',
+            },
+            {
+              title: 'OR (Procedure)',
+              body: 'Procedure performed in the Operating Room.',
+            },
+            {
+              title: 'Cashier',
+              body: 'Settle applicable charges at the Cashier.',
+            },
+            {
+              title: 'Discharged',
+              body: 'Patient is discharged after non-stress test pathway.',
+            },
+          ]
+        }
+      }
+
+      const total = steps.length
+      const current = steps[processStep] || steps[0]
+      const isDischarged = current.title === 'Discharged'
+      const atHeartChoice =
+        diagnosticBranch === 'heartstation' && current.chooseHeart && !heartPath
+
+      return (
+        <div className="screen">
+          <PathBreadcrumb path={path} />
+          <div className="result-header blue">
+            <h2>
+              Diagnostic —{' '}
+              {diagnosticBranch === 'laboratory'
+                ? 'Laboratory'
+                : diagnosticBranch === 'radiology'
+                  ? 'Radiology'
+                  : 'Heart Station'}
+            </h2>
+            <p>
+              Interactive process · Step {processStep + 1} of {total}
+            </p>
+            <div className="badge">Diagnostic</div>
+          </div>
+
+          <ProgressDots step={processStep + 1} total={total} />
+
+          <ul className="flow-steps" style={{ marginBottom: 16 }}>
+            {steps.map((s, i) => (
+              <li
+                key={`${s.title}-${i}`}
+                style={{
+                  opacity: i === processStep ? 1 : i < processStep ? 0.85 : 0.45,
+                  borderColor: i === processStep ? 'var(--blue)' : undefined,
+                  background: i === processStep ? 'var(--blue-light)' : undefined,
+                }}
+              >
+                <span
+                  className="step-num"
+                  style={{ background: i <= processStep ? 'var(--blue)' : 'var(--border)' }}
+                >
+                  {i + 1}
+                </span>
+                <strong>{s.title}</strong>
+              </li>
+            ))}
+          </ul>
+
+          <div className="section-block">
+            <h4>
+              Step {processStep + 1} — {current.title}
+            </h4>
+            <p style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 12 }}>{current.body}</p>
+
+            {atHeartChoice && (
+              <div className="card-grid" style={{ marginBottom: 12 }}>
+                <button
+                  className="choice-card"
+                  onClick={() => {
+                    setHeartPath('other')
+                    setProcessStep(3)
+                    setPath((p) => [...p, 'Other tests'])
+                  }}
+                >
+                  <h3>Other tests</h3>
+                  <p>Heart Station charge slip → Cashier → Procedure → Discharged</p>
+                </button>
+                <button
+                  className="choice-card"
+                  onClick={() => {
+                    setHeartPath('nonstress')
+                    setProcessStep(3)
+                    setPath((p) => [...p, 'Non-stress test'])
+                  }}
+                >
+                  <h3>Non-stress test</h3>
+                  <p>Admitting → OR (Procedure) → Cashier → Discharged</p>
+                </button>
+              </div>
+            )}
+
+            {isDischarged && (
+              <div className="note-box green" style={{ marginBottom: 14 }}>
+                Pathway complete. Patient has been discharged. Start a new patient when ready.
+              </div>
+            )}
+
+            {!atHeartChoice && !isDischarged && (
+              <button className="btn btn-primary" onClick={() => setProcessStep((s) => s + 1)}>
+                Next Step →
+              </button>
+            )}
+            {isDischarged && (
+              <button className="btn btn-primary" onClick={restart}>
+                New Patient
+              </button>
+            )}
+          </div>
+
+          <div className="nav-row">
+            <button className="btn btn-outline" onClick={goBack}>
+              ← Back
+            </button>
+            {!isDischarged && (
+              <button className="btn btn-outline" onClick={restart}>
+                New Patient
+              </button>
+            )}
+          </div>
+        </div>
+      )
+    }
+
     // ER Admissible
     if (benefitType === 'er' && erSub === 'admissible') {
       return (
@@ -3153,35 +4418,542 @@ export default function App() {
         maternity: 'Maternity & New Born Package',
       }
 
-      if (specialPkg === 'animalbite') {
+      // Day Surgery interactive flowchart (Woundcare / Endoscopy / HSG)
+      if (
+        benefitType === 'daysurgery' &&
+        (specialPkg === 'woundcare' || specialPkg === 'endoscopy' || specialPkg === 'hsg')
+      ) {
+        const dayLabels: Record<string, { title: string; procedure: string; place: string }> = {
+          woundcare: {
+            title: 'Wound Care',
+            procedure: 'OR (Wound Care Procedure)',
+            place: 'Operating Room',
+          },
+          endoscopy: {
+            title: 'Endoscopy',
+            procedure: 'OPD Clinic Room 404 (Endoscopy Procedure)',
+            place: 'OPD Clinic Room 404',
+          },
+          hsg: {
+            title: 'HSG',
+            procedure: 'Radiology (HSG Procedure)',
+            place: 'Radiology',
+          },
+        }
+        const info = dayLabels[specialPkg]
+        const daySteps = [
+          {
+            title: info.title,
+            body: `Day Surgery pathway selected: ${info.title}.`,
+          },
+          {
+            title: 'Admitting section (registration)',
+            body: 'Patient registers at the Admitting section.',
+          },
+          {
+            title: 'PHIC Coordinator',
+            body: 'PhilHealth Coordinator handles case coordination for day surgery scheduling and routing.',
+          },
+          {
+            title: 'PCU Phil Benefits',
+            body: 'Fill up form and submit requirements for PhilHealth benefits.',
+          },
+          {
+            title: info.procedure,
+            body: `Procedure performed at ${info.place}.`,
+          },
+          {
+            title: 'Cashier',
+            body: 'Settle applicable charges at the Cashier.',
+          },
+          {
+            title: 'Discharged',
+            body: 'Patient is discharged after day surgery / procedure.',
+          },
+        ]
+        const total = daySteps.length
+        const current = daySteps[processStep] || daySteps[0]
+        const isDischarged = processStep >= total - 1
+
         return (
           <div className="screen">
             <PathBreadcrumb path={path} />
             <div className="result-header blue">
-              <h2>Animal Bite Package</h2>
-              <p>₱5,850 · Accredited ABTC pathway</p>
-              <div className="badge">Specialized Therapy</div>
+              <h2>Day Surgery — {info.title}</h2>
+              <p>
+                Interactive process · Step {processStep + 1} of {total}
+              </p>
+              <div className="badge">Day Surgery / Procedure</div>
             </div>
-            <div className="component-list">
-              <div className="component-card">
-                <div className="comp-icon">🐶</div>
-                <div>
-                  <h4>Package Application</h4>
-                  <p>Apply the PhilHealth Animal Bite Treatment Package rates and rules.</p>
+
+            <ProgressDots step={processStep + 1} total={total} />
+
+            <ul className="flow-steps" style={{ marginBottom: 16 }}>
+              {daySteps.map((s, i) => (
+                <li
+                  key={i}
+                  style={{
+                    opacity: i === processStep ? 1 : i < processStep ? 0.85 : 0.45,
+                    borderColor: i === processStep ? 'var(--blue)' : undefined,
+                    background: i === processStep ? 'var(--blue-light)' : undefined,
+                  }}
+                >
+                  <span
+                    className="step-num"
+                    style={{ background: i <= processStep ? 'var(--blue)' : 'var(--border)' }}
+                  >
+                    {i + 1}
+                  </span>
+                  <strong>{s.title}</strong>
+                </li>
+              ))}
+            </ul>
+
+            <div className="section-block">
+              <h4>
+                Step {processStep + 1} — {current.title}
+              </h4>
+              <p style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 12 }}>{current.body}</p>
+
+              {isDischarged ? (
+                <div className="note-box green" style={{ marginBottom: 14 }}>
+                  Pathway complete. Patient has been discharged. Start a new patient when ready.
                 </div>
-              </div>
+              ) : null}
+
+              {!isDischarged ? (
+                <button className="btn btn-primary" onClick={() => setProcessStep((s) => s + 1)}>
+                  Next Step →
+                </button>
+              ) : (
+                <button className="btn btn-primary" onClick={restart}>
+                  New Patient
+                </button>
+              )}
+            </div>
+
+            <div className="nav-row">
+              <button className="btn btn-outline" onClick={goBack}>
+                ← Back
+              </button>
+              {!isDischarged && (
+                <button className="btn btn-outline" onClick={restart}>
+                  New Patient
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      }
+
+      if (specialPkg === 'animalbite') {
+        type Step = {
+          title: string
+          body: string
+          chooseVisit?: boolean
+          choosePay?: boolean
+          chooseLoa?: boolean
+          end?: boolean
+        }
+
+        let steps: Step[] = [
+          {
+            title: 'Animal Bite',
+            body: 'Specialized Therapy — Animal Bite Treatment Package (₱5,850).',
+          },
+          {
+            title: 'PHIC Coordinator',
+            body: 'PhilHealth Coordinator routes the patient to the correct visit type.',
+            chooseVisit: true,
+          },
+        ]
+
+        if (animalVisit === 'first') {
+          steps = [
+            ...steps,
+            {
+              title: 'First visit (Initial Dose)',
+              body: 'Patient is on the first visit for the initial dose.',
+            },
+            {
+              title: 'ER Consultation (Assessment)',
+              body: 'ER consultation and clinical assessment.',
+            },
+            {
+              title: 'Rabies Vaccination (Category 1, 2 & 3)',
+              body: 'Rabies vaccination given according to bite category.',
+            },
+            {
+              title: 'Anti-Tetanus Vaccine',
+              body: 'Anti-tetanus vaccine is administered as indicated.',
+            },
+            {
+              title: 'Clerk to Charge',
+              body: 'Clerk prepares charges. Select mode of payment.',
+              choosePay: true,
+            },
+          ]
+          if (animalPay === 'cash') {
+            steps = [
+              ...steps,
+              {
+                title: 'Cash',
+                body: 'Cash mode of payment selected.',
+              },
+              {
+                title: 'Cashier for payment',
+                body: 'Settle payment at the Cashier.',
+              },
+              {
+                title: 'Clearance for Discharge',
+                body: 'Clearance is completed.',
+              },
+              {
+                title: 'Discharge',
+                body: 'Patient is discharged.',
+              },
+              {
+                title: 'END',
+                body: 'First-visit Animal Bite pathway complete.',
+                end: true,
+              },
+            ]
+          } else if (animalPay === 'hmo') {
+            steps = [
+              ...steps,
+              {
+                title: 'HMO · Approved LOA?',
+                body: 'Confirm if HMO Letter of Authorization (LOA) is approved.',
+                chooseLoa: true,
+              },
+            ]
+            if (animalLoa === 'yes') {
+              steps = [
+                ...steps,
+                {
+                  title: 'Billing',
+                  body: 'Billing processes the approved HMO LOA.',
+                },
+                {
+                  title: 'Cashier for payment',
+                  body: 'Settle any remaining amount at the Cashier.',
+                },
+                {
+                  title: 'Clearance for Discharge',
+                  body: 'Clearance is completed.',
+                },
+                {
+                  title: 'Discharge',
+                  body: 'Patient is discharged.',
+                },
+                {
+                  title: 'END',
+                  body: 'First-visit Animal Bite pathway complete (HMO).',
+                  end: true,
+                },
+              ]
+            } else if (animalLoa === 'no') {
+              steps = [
+                ...steps,
+                {
+                  title: 'Cash (LOA not approved)',
+                  body: 'LOA not approved. Proceed as cash payment.',
+                },
+                {
+                  title: 'Cashier for payment',
+                  body: 'Settle payment at the Cashier.',
+                },
+                {
+                  title: 'Clearance for Discharge',
+                  body: 'Clearance is completed.',
+                },
+                {
+                  title: 'Discharge',
+                  body: 'Patient is discharged.',
+                },
+                {
+                  title: 'END',
+                  body: 'First-visit Animal Bite pathway complete (cash after LOA denial).',
+                  end: true,
+                },
+              ]
+            }
+          }
+        } else if (animalVisit === 'scheduled') {
+          steps = [
+            ...steps,
+            {
+              title: 'Scheduled Visit (Succeeding Dose)',
+              body: 'Patient returns for a scheduled succeeding dose.',
+            },
+            {
+              title: 'Vaccination as per schedule (D3, D7, D14, D21/D30)',
+              body: 'Vaccination is given according to the schedule.',
+            },
+            {
+              title: 'Completed Vaccine (Up to last visit)',
+              body: 'Vaccine doses completed up to this visit.',
+            },
+            {
+              title: 'Clerk to Charge',
+              body: 'Clerk prepares charges. Select mode of payment.',
+              choosePay: true,
+            },
+          ]
+          if (animalPay === 'cash') {
+            steps = [
+              ...steps,
+              {
+                title: 'Cash',
+                body: 'Cash mode of payment selected.',
+              },
+              {
+                title: 'Billing to deduct PHIC coverage',
+                body: 'Billing deducts applicable PhilHealth coverage.',
+              },
+              {
+                title: 'Cashier for payment',
+                body: 'Settle remaining balance at the Cashier.',
+              },
+              {
+                title: 'Clearance for Discharge',
+                body: 'Clearance is completed.',
+              },
+              {
+                title: 'Discharge',
+                body: 'Patient is discharged.',
+              },
+              {
+                title: 'END',
+                body: 'Scheduled-visit Animal Bite pathway complete.',
+                end: true,
+              },
+            ]
+          } else if (animalPay === 'hmo') {
+            steps = [
+              ...steps,
+              {
+                title: 'HMO · Approved LOA?',
+                body: 'Confirm if HMO Letter of Authorization (LOA) is approved.',
+                chooseLoa: true,
+              },
+            ]
+            if (animalLoa === 'yes') {
+              steps = [
+                ...steps,
+                {
+                  title: 'Billing',
+                  body: 'Billing processes the approved HMO LOA.',
+                },
+                {
+                  title: 'Billing to deduct PHIC coverage',
+                  body: 'Billing deducts applicable PhilHealth coverage.',
+                },
+                {
+                  title: 'Cashier for payment',
+                  body: 'Settle any remaining amount at the Cashier.',
+                },
+                {
+                  title: 'Clearance for Discharge',
+                  body: 'Clearance is completed.',
+                },
+                {
+                  title: 'Discharge',
+                  body: 'Patient is discharged.',
+                },
+                {
+                  title: 'END',
+                  body: 'Scheduled-visit Animal Bite pathway complete (HMO).',
+                  end: true,
+                },
+              ]
+            } else if (animalLoa === 'no') {
+              steps = [
+                ...steps,
+                {
+                  title: 'Cash (LOA not approved)',
+                  body: 'LOA not approved. Proceed as cash payment.',
+                },
+                {
+                  title: 'Billing to deduct PHIC coverage',
+                  body: 'Billing deducts applicable PhilHealth coverage.',
+                },
+                {
+                  title: 'Cashier for payment',
+                  body: 'Settle remaining balance at the Cashier.',
+                },
+                {
+                  title: 'Clearance for Discharge',
+                  body: 'Clearance is completed.',
+                },
+                {
+                  title: 'Discharge',
+                  body: 'Patient is discharged.',
+                },
+                {
+                  title: 'END',
+                  body: 'Scheduled-visit Animal Bite pathway complete (cash after LOA denial).',
+                  end: true,
+                },
+              ]
+            }
+          }
+        }
+
+        const total = steps.length
+        const current = steps[processStep] || steps[0]
+        const isEnd = !!current.end
+        const atVisit = !!current.chooseVisit && animalVisit === null
+        const atPay = !!current.choosePay && animalPay === null
+        const atLoa = !!current.chooseLoa && animalLoa === null
+
+        return (
+          <div className="screen">
+            <PathBreadcrumb path={path} />
+            <div className="result-header blue">
+              <h2>Animal Bite</h2>
+              <p>
+                ₱5,850 package · Step {processStep + 1} of {total}
+                {animalVisit
+                  ? ` · ${animalVisit === 'first' ? 'First visit' : 'Scheduled visit'}`
+                  : ''}
+              </p>
+              <div className="badge">Specialized Therapy · ABTC</div>
+            </div>
+            <ProgressDots step={processStep + 1} total={total} />
+            <ul className="flow-steps" style={{ marginBottom: 16 }}>
+              {steps.map((s, i) => (
+                <li
+                  key={`${s.title}-${i}`}
+                  style={{
+                    opacity: i === processStep ? 1 : i < processStep ? 0.85 : 0.45,
+                    borderColor: i === processStep ? 'var(--blue)' : undefined,
+                    background: i === processStep ? 'var(--blue-light)' : undefined,
+                  }}
+                >
+                  <span
+                    className="step-num"
+                    style={{ background: i <= processStep ? 'var(--blue)' : 'var(--border)' }}
+                  >
+                    {i + 1}
+                  </span>
+                  <strong>{s.title}</strong>
+                </li>
+              ))}
+            </ul>
+            <div className="section-block">
+              <h4>
+                Step {processStep + 1} — {current.title}
+              </h4>
+              <p style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 12 }}>{current.body}</p>
+
+              {atVisit && (
+                <div className="card-grid" style={{ marginBottom: 12 }}>
+                  <button
+                    className="choice-card green-card"
+                    onClick={() => {
+                      setAnimalVisit('first')
+                      setProcessStep(2)
+                      setPath((p) => [...p, 'First visit'])
+                    }}
+                  >
+                    <h3>First visit (Initial Dose)</h3>
+                    <p>ER assessment · Rabies · Anti-tetanus</p>
+                  </button>
+                  <button
+                    className="choice-card"
+                    onClick={() => {
+                      setAnimalVisit('scheduled')
+                      setProcessStep(2)
+                      setPath((p) => [...p, 'Scheduled visit'])
+                    }}
+                  >
+                    <h3>Scheduled Visit (Succeeding Dose)</h3>
+                    <p>D3, D7, D14, D21/D30 schedule</p>
+                  </button>
+                </div>
+              )}
+
+              {atPay && (
+                <div className="card-grid" style={{ marginBottom: 12 }}>
+                  <button
+                    className="choice-card green-card"
+                    onClick={() => {
+                      setAnimalPay('hmo')
+                      setProcessStep((s) => s + 1)
+                      setPath((p) => [...p, 'HMO'])
+                    }}
+                  >
+                    <h3>HMO</h3>
+                    <p>Check Approved LOA</p>
+                  </button>
+                  <button
+                    className="choice-card"
+                    onClick={() => {
+                      setAnimalPay('cash')
+                      setProcessStep((s) => s + 1)
+                      setPath((p) => [...p, 'Cash'])
+                    }}
+                  >
+                    <h3>Cash</h3>
+                    <p>Cashier payment pathway</p>
+                  </button>
+                </div>
+              )}
+
+              {atLoa && (
+                <div className="card-grid" style={{ marginBottom: 12 }}>
+                  <button
+                    className="choice-card green-card"
+                    onClick={() => {
+                      setAnimalLoa('yes')
+                      setProcessStep((s) => s + 1)
+                      setPath((p) => [...p, 'LOA Approved'])
+                    }}
+                  >
+                    <h3>Yes — Approved LOA</h3>
+                    <p>Proceed to Billing</p>
+                  </button>
+                  <button
+                    className="choice-card"
+                    onClick={() => {
+                      setAnimalLoa('no')
+                      setProcessStep((s) => s + 1)
+                      setPath((p) => [...p, 'LOA Not Approved'])
+                    }}
+                  >
+                    <h3>No — Not Approved</h3>
+                    <p>Proceed as Cash</p>
+                  </button>
+                </div>
+              )}
+
+              {isEnd && (
+                <div className="note-box green" style={{ marginBottom: 14 }}>
+                  Pathway complete. Start a new patient when ready.
+                </div>
+              )}
+
+              {!atVisit && !atPay && !atLoa && !isEnd && (
+                <button className="btn btn-primary" onClick={() => setProcessStep((s) => s + 1)}>
+                  Next Step →
+                </button>
+              )}
+              {isEnd && (
+                <button className="btn btn-primary" onClick={restart}>
+                  New Patient
+                </button>
+              )}
             </div>
             <div className="nav-row">
-              <button className="btn btn-outline" onClick={goBack}>← Back</button>
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  setProcessStep(0)
-                  setDetailView('animal-flow')
-                }}
-              >
-                Start Animal Bite Pathway →
+              <button className="btn btn-outline" onClick={goBack}>
+                ← Back
               </button>
+              {!isEnd && (
+                <button className="btn btn-outline" onClick={restart}>
+                  New Patient
+                </button>
+              )}
             </div>
           </div>
         )
@@ -3222,34 +4994,497 @@ export default function App() {
       }
 
       if (specialPkg === 'dialysis') {
+        const hdSteps = [
+          {
+            title: 'Hemodialysis',
+            body: 'Specialized Therapy — Hemodialysis pathway selected.',
+          },
+          {
+            title: 'PHIC Coordinator',
+            body: 'PhilHealth Coordinator screens the patient for hemodialysis benefit.',
+          },
+          {
+            title: 'CKD-5 Patient',
+            body: 'Confirm patient is CKD Stage 5 requiring hemodialysis.',
+          },
+          {
+            title: 'Registration at Hemodialysis Unit',
+            body: 'Patient registers at the Hemodialysis Unit.',
+          },
+          {
+            title: 'Completion of PHIC Document',
+            body: 'Complete required PhilHealth documents for the session.',
+          },
+          {
+            title: 'Hemodialysis Session',
+            body: 'Hemodialysis treatment session is performed.',
+          },
+          {
+            title: 'Signing of PHIC Document',
+            body: 'Patient/authorized person signs PhilHealth documents.',
+          },
+          {
+            title: 'Discharge',
+            body: 'Patient is discharged after the hemodialysis session.',
+          },
+          {
+            title: 'END',
+            body: 'Hemodialysis pathway complete.',
+          },
+        ]
+        const total = hdSteps.length
+        const current = hdSteps[processStep] || hdSteps[0]
+        const isEnd = processStep >= total - 1
+
         return (
           <div className="screen">
             <PathBreadcrumb path={path} />
             <div className="result-header blue">
               <h2>Hemodialysis</h2>
-              <p>CKD Stage 5 · ₱6,350 per session · up to 156 sessions/year</p>
+              <p>
+                Interactive process · Step {processStep + 1} of {total}
+              </p>
               <div className="badge">Specialized Therapy</div>
             </div>
-            <div className="component-list">
-              <div className="component-card">
-                <div className="comp-icon">🩺</div>
-                <div>
-                  <h4>Package Application</h4>
-                  <p>PhilHealth Dialysis Database requirements and accredited facility pathway.</p>
-                </div>
-              </div>
+            <ProgressDots step={processStep + 1} total={total} />
+            <ul className="flow-steps" style={{ marginBottom: 16 }}>
+              {hdSteps.map((s, i) => (
+                <li
+                  key={i}
+                  style={{
+                    opacity: i === processStep ? 1 : i < processStep ? 0.85 : 0.45,
+                    borderColor: i === processStep ? 'var(--blue)' : undefined,
+                    background: i === processStep ? 'var(--blue-light)' : undefined,
+                  }}
+                >
+                  <span
+                    className="step-num"
+                    style={{ background: i <= processStep ? 'var(--blue)' : 'var(--border)' }}
+                  >
+                    {i + 1}
+                  </span>
+                  <strong>{s.title}</strong>
+                </li>
+              ))}
+            </ul>
+            <div className="section-block">
+              <h4>
+                Step {processStep + 1} — {current.title}
+              </h4>
+              <p style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 12 }}>{current.body}</p>
+              {isEnd ? (
+                <>
+                  <div className="note-box green" style={{ marginBottom: 14 }}>
+                    Pathway complete. Start a new patient when ready.
+                  </div>
+                  <button className="btn btn-primary" onClick={restart}>
+                    New Patient
+                  </button>
+                </>
+              ) : (
+                <button className="btn btn-primary" onClick={() => setProcessStep((s) => s + 1)}>
+                  Next Step →
+                </button>
+              )}
             </div>
             <div className="nav-row">
-              <button className="btn btn-outline" onClick={goBack}>← Back</button>
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  setProcessStep(0)
-                  setDetailView('dialysis-flow')
-                }}
-              >
-                Start Hemodialysis Pathway →
+              <button className="btn btn-outline" onClick={goBack}>
+                ← Back
               </button>
+              {!isEnd && (
+                <button className="btn btn-outline" onClick={restart}>
+                  New Patient
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      }
+
+      if (specialPkg === 'chemo') {
+        type Step = {
+          title: string
+          body: string
+          chooseZben?: boolean
+          choosePhic?: boolean
+          end?: boolean
+        }
+        let chemoSteps: Step[] = [
+          {
+            title: 'Chemotherapy',
+            body: 'Specialized Therapy — Chemotherapy pathway selected.',
+          },
+          {
+            title: 'PHIC Coordinator',
+            body: 'PhilHealth Coordinator assesses Z-Benefit eligibility for chemotherapy.',
+            chooseZben: true,
+          },
+        ]
+
+        if (chemoZben === 'no') {
+          chemoSteps = [
+            ...chemoSteps,
+            {
+              title: 'Proceed to regular Chemotherapy Procedure',
+              body: 'Patient is not ZBEN-eligible. Proceed with regular chemotherapy procedure.',
+              end: true,
+            },
+          ]
+        } else if (chemoZben === 'yes') {
+          chemoSteps = [
+            ...chemoSteps,
+            {
+              title: 'Endorsed to ZBen-Coordinator',
+              body: 'Case is endorsed to the Z-Benefit Coordinator.',
+            },
+            {
+              title: 'Consultation (Oncologist)',
+              body: 'Patient consults with the Oncologist.',
+            },
+            {
+              title: 'ZBen Coordinator processes application',
+              body: 'Z-Benefit Coordinator processes the ZBEN application.',
+            },
+            {
+              title: 'PHIC Approval of ZBen',
+              body: 'Await PhilHealth approval of the Z-Benefit application.',
+              choosePhic: true,
+            },
+          ]
+          if (chemoPhicOk === 'no') {
+            chemoSteps = [
+              ...chemoSteps,
+              {
+                title: 'Proceed as cash paying / HMO paying patient',
+                body: 'ZBEN not approved. Patient proceeds as cash-paying or HMO-paying.',
+                end: true,
+              },
+            ]
+          } else if (chemoPhicOk === 'yes') {
+            chemoSteps = [
+              ...chemoSteps,
+              {
+                title: 'Proceed to Chemotherapy as per schedule of Oncologist',
+                body: 'ZBEN approved. Chemotherapy proceeds per Oncologist schedule.',
+              },
+              {
+                title: 'END',
+                body: 'Chemotherapy (ZBEN) pathway complete.',
+                end: true,
+              },
+            ]
+          }
+        }
+
+        const total = chemoSteps.length
+        const current = chemoSteps[processStep] || chemoSteps[0]
+        const isEnd = !!current.end
+        const atZben = !!current.chooseZben && chemoZben === null
+        const atPhic = !!current.choosePhic && chemoPhicOk === null
+
+        return (
+          <div className="screen">
+            <PathBreadcrumb path={path} />
+            <div className="result-header purple">
+              <h2>Chemotherapy</h2>
+              <p>
+                Interactive process · Step {processStep + 1} of {total}
+              </p>
+              <div className="badge">Specialized Therapy · ZBEN screen</div>
+            </div>
+            <ProgressDots step={processStep + 1} total={total} />
+            <ul className="flow-steps" style={{ marginBottom: 16 }}>
+              {chemoSteps.map((s, i) => (
+                <li
+                  key={`${s.title}-${i}`}
+                  style={{
+                    opacity: i === processStep ? 1 : i < processStep ? 0.85 : 0.45,
+                    borderColor: i === processStep ? 'var(--blue)' : undefined,
+                    background: i === processStep ? 'var(--blue-light)' : undefined,
+                  }}
+                >
+                  <span
+                    className="step-num"
+                    style={{ background: i <= processStep ? 'var(--blue)' : 'var(--border)' }}
+                  >
+                    {i + 1}
+                  </span>
+                  <strong>{s.title}</strong>
+                </li>
+              ))}
+            </ul>
+            <div className="section-block">
+              <h4>
+                Step {processStep + 1} — {current.title}
+              </h4>
+              <p style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 12 }}>{current.body}</p>
+
+              {atZben && (
+                <div className="card-grid" style={{ marginBottom: 12 }}>
+                  <button
+                    className="choice-card green-card"
+                    onClick={() => {
+                      setChemoZben('yes')
+                      setProcessStep(2)
+                      setPath((p) => [...p, 'ZBEN-Eligible'])
+                    }}
+                  >
+                    <h3>Yes — ZBEN-Eligible</h3>
+                    <p>Endorse to ZBen-Coordinator</p>
+                  </button>
+                  <button
+                    className="choice-card"
+                    onClick={() => {
+                      setChemoZben('no')
+                      setProcessStep(2)
+                      setPath((p) => [...p, 'Not ZBEN-Eligible'])
+                    }}
+                  >
+                    <h3>No — Not ZBEN-Eligible</h3>
+                    <p>Proceed to regular Chemotherapy Procedure</p>
+                  </button>
+                </div>
+              )}
+
+              {atPhic && (
+                <div className="card-grid" style={{ marginBottom: 12 }}>
+                  <button
+                    className="choice-card green-card"
+                    onClick={() => {
+                      setChemoPhicOk('yes')
+                      setProcessStep(6)
+                      setPath((p) => [...p, 'PHIC Approved'])
+                    }}
+                  >
+                    <h3>Yes — PHIC Approved</h3>
+                    <p>Chemotherapy per Oncologist schedule</p>
+                  </button>
+                  <button
+                    className="choice-card"
+                    onClick={() => {
+                      setChemoPhicOk('no')
+                      setProcessStep(6)
+                      setPath((p) => [...p, 'PHIC Not Approved'])
+                    }}
+                  >
+                    <h3>No — Not Approved</h3>
+                    <p>Proceed as cash paying / HMO paying patient</p>
+                  </button>
+                </div>
+              )}
+
+              {isEnd && (
+                <div className="note-box green" style={{ marginBottom: 14 }}>
+                  Pathway complete. Start a new patient when ready.
+                </div>
+              )}
+
+              {!atZben && !atPhic && !isEnd && (
+                <button className="btn btn-primary" onClick={() => setProcessStep((s) => s + 1)}>
+                  Next Step →
+                </button>
+              )}
+              {isEnd && (
+                <button className="btn btn-primary" onClick={restart}>
+                  New Patient
+                </button>
+              )}
+            </div>
+            <div className="nav-row">
+              <button className="btn btn-outline" onClick={goBack}>
+                ← Back
+              </button>
+              {!isEnd && (
+                <button className="btn btn-outline" onClick={restart}>
+                  New Patient
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      }
+
+      if (specialPkg === 'blood') {
+        type Step = {
+          title: string
+          body: string
+          choosePatient?: boolean
+          end?: boolean
+        }
+        let bloodSteps: Step[] = [
+          {
+            title: 'Blood Transfusion',
+            body: 'Specialized Therapy — Blood Transfusion pathway selected.',
+          },
+          {
+            title: 'PHIC Coordinator',
+            body: 'PhilHealth Coordinator reviews the case for blood transfusion benefit.',
+          },
+          {
+            title: 'PHIC Benefit as All Case Rate',
+            body: 'Blood transfusion is processed under PhilHealth All Case Rate (ACR). Choose patient type.',
+            choosePatient: true,
+          },
+        ]
+
+        if (bloodPatient === 'hd') {
+          bloodSteps = [
+            ...bloodSteps,
+            {
+              title: 'HD Patient',
+              body: 'Patient is a Hemodialysis (HD) patient.',
+            },
+            {
+              title: 'Completion of Document',
+              body: 'Complete the required PhilHealth documents.',
+            },
+            {
+              title: 'Blood Transfusion at the HD Unit',
+              body: 'Blood transfusion is performed at the Hemodialysis Unit.',
+            },
+            {
+              title: 'Signing of PHIC Document',
+              body: 'Patient/authorized person signs the PhilHealth documents.',
+            },
+            {
+              title: 'Discharge',
+              body: 'Patient is discharged after blood transfusion.',
+            },
+            {
+              title: 'END',
+              body: 'Blood Transfusion (HD Patient) pathway complete.',
+              end: true,
+            },
+          ]
+        } else if (bloodPatient === 'onco') {
+          bloodSteps = [
+            ...bloodSteps,
+            {
+              title: 'Onco Patient',
+              body: 'Patient is an Oncology (Onco) patient.',
+            },
+            {
+              title: 'Completion of Document',
+              body: 'Complete the required PhilHealth documents.',
+            },
+            {
+              title: 'Blood Transfusion at the Onco Unit',
+              body: 'Blood transfusion is performed at the Oncology Unit.',
+            },
+            {
+              title: 'Signing of PHIC Document',
+              body: 'Patient/authorized person signs the PhilHealth documents.',
+            },
+            {
+              title: 'Discharge',
+              body: 'Patient is discharged after blood transfusion.',
+            },
+            {
+              title: 'END',
+              body: 'Blood Transfusion (Onco Patient) pathway complete.',
+              end: true,
+            },
+          ]
+        }
+
+        const total = bloodSteps.length
+        const current = bloodSteps[processStep] || bloodSteps[0]
+        const isEnd = !!current.end
+        const atPatient = !!current.choosePatient && bloodPatient === null
+
+        return (
+          <div className="screen">
+            <PathBreadcrumb path={path} />
+            <div className="result-header blue">
+              <h2>Blood Transfusion</h2>
+              <p>
+                Interactive process · Step {processStep + 1} of {total}
+                {bloodPatient
+                  ? ` · ${bloodPatient === 'hd' ? 'HD Patient' : 'Onco Patient'}`
+                  : ''}
+              </p>
+              <div className="badge">Specialized Therapy · ACR</div>
+            </div>
+            <ProgressDots step={processStep + 1} total={total} />
+            <ul className="flow-steps" style={{ marginBottom: 16 }}>
+              {bloodSteps.map((s, i) => (
+                <li
+                  key={`${s.title}-${i}`}
+                  style={{
+                    opacity: i === processStep ? 1 : i < processStep ? 0.85 : 0.45,
+                    borderColor: i === processStep ? 'var(--blue)' : undefined,
+                    background: i === processStep ? 'var(--blue-light)' : undefined,
+                  }}
+                >
+                  <span
+                    className="step-num"
+                    style={{ background: i <= processStep ? 'var(--blue)' : 'var(--border)' }}
+                  >
+                    {i + 1}
+                  </span>
+                  <strong>{s.title}</strong>
+                </li>
+              ))}
+            </ul>
+            <div className="section-block">
+              <h4>
+                Step {processStep + 1} — {current.title}
+              </h4>
+              <p style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 12 }}>{current.body}</p>
+
+              {atPatient && (
+                <div className="card-grid" style={{ marginBottom: 12 }}>
+                  <button
+                    className="choice-card"
+                    onClick={() => {
+                      setBloodPatient('hd')
+                      setProcessStep(3)
+                      setPath((p) => [...p, 'HD Patient'])
+                    }}
+                  >
+                    <h3>HD Patient</h3>
+                    <p>Blood transfusion at the Hemodialysis Unit</p>
+                  </button>
+                  <button
+                    className="choice-card"
+                    onClick={() => {
+                      setBloodPatient('onco')
+                      setProcessStep(3)
+                      setPath((p) => [...p, 'Onco Patient'])
+                    }}
+                  >
+                    <h3>Onco Patient</h3>
+                    <p>Blood transfusion at the Oncology Unit</p>
+                  </button>
+                </div>
+              )}
+
+              {isEnd && (
+                <div className="note-box green" style={{ marginBottom: 14 }}>
+                  Pathway complete. Start a new patient when ready.
+                </div>
+              )}
+
+              {!atPatient && !isEnd && (
+                <button className="btn btn-primary" onClick={() => setProcessStep((s) => s + 1)}>
+                  Next Step →
+                </button>
+              )}
+              {isEnd && (
+                <button className="btn btn-primary" onClick={restart}>
+                  New Patient
+                </button>
+              )}
+            </div>
+            <div className="nav-row">
+              <button className="btn btn-outline" onClick={goBack}>
+                ← Back
+              </button>
+              {!isEnd && (
+                <button className="btn btn-outline" onClick={restart}>
+                  New Patient
+                </button>
+              )}
             </div>
           </div>
         )

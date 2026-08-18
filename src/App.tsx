@@ -813,11 +813,6 @@ export default function App() {
       <p className="section-desc">Which PhilHealth benefit is applicable?</p>
 
       <div className="card-grid">
-        <button className="choice-card green-card" onClick={() => selectBenefit('yakap')}>
-          <div className="icon">💚</div>
-          <h3>YAKAP</h3>
-          <p>1. Consultation · 2. Diagnostics/Lab · 3. Gamot · 4. Cancer Screening</p>
-        </button>
         <button className="choice-card" onClick={() => selectBenefit('daysurgery')}>
           <div className="icon">🏥</div>
           <h3>Day Surgery / Procedure</h3>
@@ -840,11 +835,6 @@ export default function App() {
           <div className="icon">👨‍⚕️</div>
           <h3>Consultation</h3>
           <p>Private · Walk-In · Indigent · YAKAP / Gamot / Cancer routing</p>
-        </button>
-        <button className="choice-card" onClick={() => selectBenefit('zbenefit')}>
-          <div className="icon">💜</div>
-          <h3>Z-BEN</h3>
-          <p>Z-Package for catastrophic cases</p>
         </button>
       </div>
 

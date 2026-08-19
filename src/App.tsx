@@ -197,6 +197,10 @@ export default function App() {
   const [animalVisit, setAnimalVisit] = useState<'first' | 'scheduled' | null>(null)
   const [animalPay, setAnimalPay] = useState<'hmo' | 'cash' | null>(null)
   const [animalLoa, setAnimalLoa] = useState<YesNo>(null)
+  const [rehabCardio, setRehabCardio] = useState<YesNo>(null)
+  const [rehabPay, setRehabPay] = useState<'hmo' | 'cash' | null>(null)
+  const [rehabSchedule, setRehabSchedule] = useState<YesNo>(null)
+  const [rehabLoa, setRehabLoa] = useState<YesNo>(null)
 
   // Set logo URL for CSS watermarks on all clickable buttons
   useEffect(() => {
@@ -234,6 +238,10 @@ export default function App() {
     setAnimalVisit(null)
     setAnimalPay(null)
     setAnimalLoa(null)
+    setRehabCardio(null)
+    setRehabPay(null)
+    setRehabSchedule(null)
+    setRehabLoa(null)
   }
 
   const goBack = () => {
@@ -333,6 +341,39 @@ export default function App() {
       if (processStep === 3 && bloodPatient) {
         setBloodPatient(null)
         setProcessStep(2)
+        return
+      }
+      setProcessStep((s) => s - 1)
+      return
+    }
+    if (benefitType === 'specialized' && specialPkg === 'rehab' && processStep > 0) {
+      if (processStep === 2 && rehabCardio) {
+        setRehabCardio(null)
+        setRehabPay(null)
+        setRehabSchedule(null)
+        setRehabLoa(null)
+        setProcessStep(1)
+        return
+      }
+      if (rehabCardio === 'no' && processStep === 3 && rehabPay) {
+        setRehabPay(null)
+        setRehabSchedule(null)
+        setRehabLoa(null)
+        setProcessStep(2)
+        return
+      }
+      if (rehabCardio === 'no' && rehabPay && processStep >= 5 && rehabSchedule) {
+        // back from schedule decision
+        if ((rehabPay === 'cash' && processStep === 5) || (rehabPay === 'hmo' && processStep === 6)) {
+          setRehabSchedule(null)
+          setRehabLoa(null)
+          setProcessStep((s) => s - 1)
+          return
+        }
+      }
+      if (rehabCardio === 'no' && rehabPay === 'hmo' && rehabSchedule === 'yes' && rehabLoa) {
+        setRehabLoa(null)
+        setProcessStep((s) => s - 1)
         return
       }
       setProcessStep((s) => s - 1)
@@ -605,6 +646,10 @@ export default function App() {
     setAnimalVisit(null)
     setAnimalPay(null)
     setAnimalLoa(null)
+    setRehabCardio(null)
+    setRehabPay(null)
+    setRehabSchedule(null)
+    setRehabLoa(null)
   }
 
   const selectEntry = (type: EntryType) => {
@@ -707,6 +752,10 @@ export default function App() {
     setAnimalVisit(null)
     setAnimalPay(null)
     setAnimalLoa(null)
+    setRehabCardio(null)
+    setRehabPay(null)
+    setRehabSchedule(null)
+    setRehabLoa(null)
     setPath((p) => [...p, labels[pkg]])
     setScreen(5)
   }
@@ -4950,34 +4999,402 @@ export default function App() {
       }
 
       if (specialPkg === 'rehab') {
+        type Step = {
+          title: string
+          body: string
+          chooseCardio?: boolean
+          choosePay?: boolean
+          chooseSchedule?: boolean
+          chooseLoa?: boolean
+          end?: boolean
+        }
+
+        let steps: Step[] = [
+          {
+            title: 'Rehabilitation & Physical Medicine',
+            body: 'Specialized Therapy — Rehab pathway selected. (SOBEN to be updated separately.)',
+          },
+          {
+            title: 'PHIC Coordinator',
+            body: 'PhilHealth Coordinator reviews the case. Check if there is a referral from Cardio.',
+            chooseCardio: true,
+          },
+        ]
+
+        if (rehabCardio === 'yes') {
+          steps = [
+            ...steps,
+            {
+              title: 'Proceed with Cardiac Rehab Protocol',
+              body: 'Patient has Cardio referral. Follow Cardiac Rehab Protocol.',
+            },
+            {
+              title: 'Charging of session',
+              body: 'Charge the cardiac rehab session.',
+            },
+            {
+              title: 'Patient to sign progress report',
+              body: 'Patient signs the progress report.',
+            },
+            {
+              title: 'Billing to release SOA',
+              body: 'Billing releases the Statement of Account (SOA).',
+            },
+            {
+              title: 'Patient to sign SOA',
+              body: 'Patient signs the SOA.',
+            },
+            {
+              title: 'Submit SOA to PCU & Progress report',
+              body: 'Submit SOA and progress report to PCU.',
+            },
+            {
+              title: 'END',
+              body: 'Cardiac Rehab pathway complete.',
+              end: true,
+            },
+          ]
+        } else if (rehabCardio === 'no') {
+          steps = [
+            ...steps,
+            {
+              title: 'Mode of Payment',
+              body: 'No Cardio referral. Select mode of payment.',
+              choosePay: true,
+            },
+          ]
+
+          if (rehabPay === 'cash') {
+            steps = [
+              ...steps,
+              {
+                title: 'Cash',
+                body: 'Cash mode of payment selected.',
+              },
+              {
+                title: 'Consultation with Rehab Doctor',
+                body: 'Patient consults with the Rehab Doctor.',
+              },
+              {
+                title: 'Endorse Treatment program to PT on duty',
+                body: 'Treatment program is endorsed to the Physical Therapist on duty.',
+              },
+              {
+                title: 'Available schedule for Treatment?',
+                body: 'Check if there is an available treatment schedule.',
+                chooseSchedule: true,
+              },
+            ]
+            if (rehabSchedule === 'no') {
+              steps = [
+                ...steps,
+                {
+                  title: 'For Scheduling',
+                  body: 'No available slot. Patient is placed for scheduling.',
+                  end: true,
+                },
+              ]
+            } else if (rehabSchedule === 'yes') {
+              steps = [
+                ...steps,
+                {
+                  title: 'Charge',
+                  body: 'Charge the treatment session.',
+                },
+                {
+                  title: 'Payment at the cashier',
+                  body: 'Patient settles payment at the Cashier.',
+                },
+                {
+                  title: 'Treatment Procedure',
+                  body: 'Treatment procedure is performed.',
+                },
+                {
+                  title: 'Patient to return on the next schedule',
+                  body: 'Patient returns on the next scheduled session.',
+                },
+                {
+                  title: 'END',
+                  body: 'Cash Rehab pathway complete for this session.',
+                  end: true,
+                },
+              ]
+            }
+          } else if (rehabPay === 'hmo') {
+            steps = [
+              ...steps,
+              {
+                title: 'HMO · Approved LOA',
+                body: 'HMO mode with approved LOA for consultation path.',
+              },
+              {
+                title: 'Consultation with Rehab Doctor',
+                body: 'Patient consults with the Rehab Doctor.',
+              },
+              {
+                title: 'Endorse Treatment program to PT on duty',
+                body: 'Treatment program is endorsed to the Physical Therapist on duty.',
+              },
+              {
+                title: 'Available schedule for Treatment?',
+                body: 'Check if there is an available treatment schedule.',
+                chooseSchedule: true,
+              },
+            ]
+            if (rehabSchedule === 'no') {
+              steps = [
+                ...steps,
+                {
+                  title: 'For Scheduling',
+                  body: 'No available slot. Patient is placed for scheduling.',
+                  end: true,
+                },
+              ]
+            } else if (rehabSchedule === 'yes') {
+              steps = [
+                ...steps,
+                {
+                  title: 'HMO Slip for LOA approval of treatment',
+                  body: 'Prepare HMO slip for LOA approval of the treatment.',
+                },
+                {
+                  title: 'LOA Approval?',
+                  body: 'Confirm if LOA for treatment is approved.',
+                  chooseLoa: true,
+                },
+              ]
+              if (rehabLoa === 'yes') {
+                steps = [
+                  ...steps,
+                  {
+                    title: 'LOA Approved',
+                    body: 'LOA for treatment is approved.',
+                  },
+                  {
+                    title: 'Treatment Procedure',
+                    body: 'Treatment procedure is performed.',
+                  },
+                  {
+                    title: 'Submit LOA at the accounting',
+                    body: 'Submit approved LOA to Accounting.',
+                  },
+                  {
+                    title: 'Patient to return on the next schedule',
+                    body: 'Patient returns on the next scheduled session.',
+                  },
+                  {
+                    title: 'END',
+                    body: 'HMO Rehab pathway complete for this session.',
+                    end: true,
+                  },
+                ]
+              } else if (rehabLoa === 'no') {
+                steps = [
+                  ...steps,
+                  {
+                    title: 'Charge',
+                    body: 'LOA not approved. Charge the session.',
+                  },
+                  {
+                    title: 'Payment at the cashier',
+                    body: 'Patient settles payment at the Cashier.',
+                  },
+                  {
+                    title: 'Treatment Procedure',
+                    body: 'Treatment procedure is performed.',
+                  },
+                  {
+                    title: 'Patient to return on the next schedule',
+                    body: 'Patient returns on the next scheduled session.',
+                  },
+                  {
+                    title: 'END',
+                    body: 'Rehab pathway complete (LOA not approved → cash charge).',
+                    end: true,
+                  },
+                ]
+              }
+            }
+          }
+        }
+
+        const total = steps.length
+        const current = steps[processStep] || steps[0]
+        const isEnd = !!current.end
+        const atCardio = !!current.chooseCardio && rehabCardio === null
+        const atPay = !!current.choosePay && rehabPay === null
+        const atSchedule = !!current.chooseSchedule && rehabSchedule === null
+        const atLoa = !!current.chooseLoa && rehabLoa === null
+
         return (
           <div className="screen">
             <PathBreadcrumb path={path} />
             <div className="result-header blue">
-              <h2>Rehab Package</h2>
-              <p>Physical Medicine, Rehabilitation & Assistive Devices</p>
-              <div className="badge">Specialized Therapy</div>
+              <h2>Rehabilitation & Physical Medicine</h2>
+              <p>
+                Interactive process · Step {processStep + 1} of {total}
+              </p>
+              <div className="badge">Specialized Therapy · Rehab</div>
             </div>
-            <div className="component-list">
-              <div className="component-card">
-                <div className="comp-icon">🦾</div>
-                <div>
-                  <h4>Package Application</h4>
-                  <p>Screen for rehab / Z / assistive-device package eligibility.</p>
+            <ProgressDots step={processStep + 1} total={total} />
+            <ul className="flow-steps" style={{ marginBottom: 16 }}>
+              {steps.map((s, i) => (
+                <li
+                  key={`${s.title}-${i}`}
+                  style={{
+                    opacity: i === processStep ? 1 : i < processStep ? 0.85 : 0.45,
+                    borderColor: i === processStep ? 'var(--blue)' : undefined,
+                    background: i === processStep ? 'var(--blue-light)' : undefined,
+                  }}
+                >
+                  <span
+                    className="step-num"
+                    style={{ background: i <= processStep ? 'var(--blue)' : 'var(--border)' }}
+                  >
+                    {i + 1}
+                  </span>
+                  <strong>{s.title}</strong>
+                </li>
+              ))}
+            </ul>
+            <div className="section-block">
+              <h4>
+                Step {processStep + 1} — {current.title}
+              </h4>
+              <p style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 12 }}>{current.body}</p>
+
+              {atCardio && (
+                <div className="card-grid" style={{ marginBottom: 12 }}>
+                  <button
+                    className="choice-card green-card"
+                    onClick={() => {
+                      setRehabCardio('yes')
+                      setProcessStep(2)
+                      setPath((p) => [...p, 'Cardio Referral'])
+                    }}
+                  >
+                    <h3>Yes — Referral from Cardio</h3>
+                    <p>Cardiac Rehab Protocol</p>
+                  </button>
+                  <button
+                    className="choice-card"
+                    onClick={() => {
+                      setRehabCardio('no')
+                      setProcessStep(2)
+                      setPath((p) => [...p, 'No Cardio Referral'])
+                    }}
+                  >
+                    <h3>No — No Cardio Referral</h3>
+                    <p>Choose HMO or Cash payment path</p>
+                  </button>
                 </div>
-              </div>
+              )}
+
+              {atPay && (
+                <div className="card-grid" style={{ marginBottom: 12 }}>
+                  <button
+                    className="choice-card green-card"
+                    onClick={() => {
+                      setRehabPay('hmo')
+                      setProcessStep(3)
+                      setPath((p) => [...p, 'HMO'])
+                    }}
+                  >
+                    <h3>HMO</h3>
+                    <p>Approved LOA path</p>
+                  </button>
+                  <button
+                    className="choice-card"
+                    onClick={() => {
+                      setRehabPay('cash')
+                      setProcessStep(3)
+                      setPath((p) => [...p, 'Cash'])
+                    }}
+                  >
+                    <h3>Cash</h3>
+                    <p>Cash payment path</p>
+                  </button>
+                </div>
+              )}
+
+              {atSchedule && (
+                <div className="card-grid" style={{ marginBottom: 12 }}>
+                  <button
+                    className="choice-card green-card"
+                    onClick={() => {
+                      setRehabSchedule('yes')
+                      setProcessStep((s) => s + 1)
+                    }}
+                  >
+                    <h3>Yes — Schedule available</h3>
+                    <p>Proceed to charge / LOA steps</p>
+                  </button>
+                  <button
+                    className="choice-card"
+                    onClick={() => {
+                      setRehabSchedule('no')
+                      setProcessStep((s) => s + 1)
+                    }}
+                  >
+                    <h3>No — For Scheduling</h3>
+                    <p>Place patient for scheduling</p>
+                  </button>
+                </div>
+              )}
+
+              {atLoa && (
+                <div className="card-grid" style={{ marginBottom: 12 }}>
+                  <button
+                    className="choice-card green-card"
+                    onClick={() => {
+                      setRehabLoa('yes')
+                      setProcessStep((s) => s + 1)
+                      setPath((p) => [...p, 'LOA Approved'])
+                    }}
+                  >
+                    <h3>Yes — LOA Approved</h3>
+                    <p>Treatment → Submit LOA to Accounting</p>
+                  </button>
+                  <button
+                    className="choice-card"
+                    onClick={() => {
+                      setRehabLoa('no')
+                      setProcessStep((s) => s + 1)
+                      setPath((p) => [...p, 'LOA Not Approved'])
+                    }}
+                  >
+                    <h3>No — LOA Not Approved</h3>
+                    <p>Charge → Cashier → Treatment</p>
+                  </button>
+                </div>
+              )}
+
+              {isEnd && (
+                <div className="note-box green" style={{ marginBottom: 14 }}>
+                  Pathway complete for this session. Start a new patient when ready.
+                </div>
+              )}
+
+              {!atCardio && !atPay && !atSchedule && !atLoa && !isEnd && (
+                <button className="btn btn-primary" onClick={() => setProcessStep((s) => s + 1)}>
+                  Next Step →
+                </button>
+              )}
+              {isEnd && (
+                <button className="btn btn-primary" onClick={restart}>
+                  New Patient
+                </button>
+              )}
             </div>
             <div className="nav-row">
-              <button className="btn btn-outline" onClick={goBack}>← Back</button>
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  setProcessStep(0)
-                  setDetailView('rehab-flow')
-                }}
-              >
-                Start Rehabilitation Pathway →
+              <button className="btn btn-outline" onClick={goBack}>
+                ← Back
               </button>
+              {!isEnd && (
+                <button className="btn btn-outline" onClick={restart}>
+                  New Patient
+                </button>
+              )}
             </div>
           </div>
         )

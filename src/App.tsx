@@ -6286,6 +6286,19 @@ export default function App() {
         </div>
         <h1>GCare PhilHealth Benefits Utilization Program</h1>
         <p className="tagline">Global Care Canlubang PhilHealth Ecosystem</p>
+        <p style={{ marginTop: 8 }}>
+          <a
+            href="#monitor"
+            style={{
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              color: 'var(--blue)',
+              textDecoration: 'none',
+            }}
+          >
+            Open Flow Monitor Dashboard →
+          </a>
+        </p>
       </header>
 
       <ProgressDots step={screen} total={6} />

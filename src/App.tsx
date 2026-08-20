@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { saveFlowCompletion } from './lib/flowMonitor'
 
 /** PhilHealth YAKAP GAMOT (21 Core) — Hospital Pharmacy / Epress */
 const GAMOT_21 = [
@@ -609,6 +610,125 @@ export default function App() {
       setPath((p) => p.slice(0, -1))
       return
     }
+  }
+
+  /** Build flow label from current navigation state for monitoring. */
+  const getCompletionMeta = (): { flow_name: string; branch?: string } | null => {
+    if (entryType === 'direct' && !benefitType) {
+      return {
+        flow_name: 'Direct Admission',
+        branch: directPay === 'hmo' ? 'HMO' : directPay === 'cash' ? 'Cash' : undefined,
+      }
+    }
+    if (benefitType === 'consultation') {
+      return {
+        flow_name: 'Consultation',
+        branch:
+          consultPatient === 'private'
+            ? 'Private'
+            : consultPatient === 'walkin'
+              ? 'Walk-In'
+              : consultPatient === 'indigent'
+                ? 'Indigent'
+                : undefined,
+      }
+    }
+    if (benefitType === 'diagnostic' && diagnosticBranch) {
+      return {
+        flow_name: `Diagnostic – ${
+          diagnosticBranch === 'laboratory'
+            ? 'Laboratory'
+            : diagnosticBranch === 'radiology'
+              ? 'Radiology'
+              : 'Heart Station'
+        }`,
+        branch:
+          diagnosticBranch === 'heartstation'
+            ? heartPath === 'other'
+              ? 'Other tests'
+              : heartPath === 'nonstress'
+                ? 'Non-stress test'
+                : undefined
+            : undefined,
+      }
+    }
+    if (benefitType === 'daysurgery' && specialPkg) {
+      const map: Record<string, string> = {
+        woundcare: 'Woundcare',
+        endoscopy: 'Endoscopy',
+        hsg: 'HSG',
+      }
+      return { flow_name: `Day Surgery – ${map[specialPkg] || specialPkg}` }
+    }
+    if (benefitType === 'specialized' && specialPkg) {
+      const map: Record<string, string> = {
+        dialysis: 'Hemodialysis',
+        chemo: 'Chemotherapy',
+        blood: 'Blood Transfusion',
+        animalbite: 'Animal Bite',
+        rehab: 'Rehab',
+        radio: 'Radiotherapy',
+      }
+      let branch: string | undefined
+      if (specialPkg === 'rehab') {
+        if (rehabCardio === 'yes') branch = 'Cardio referral'
+        else if (rehabPay === 'cash') branch = 'Cash'
+        else if (rehabPay === 'hmo') branch = rehabLoa === 'yes' ? 'HMO LOA approved' : rehabLoa === 'no' ? 'HMO LOA denied' : 'HMO'
+      } else if (specialPkg === 'chemo') {
+        branch =
+          chemoZben === 'no'
+            ? 'Not ZBEN'
+            : chemoPhicOk === 'yes'
+              ? 'ZBEN approved'
+              : chemoPhicOk === 'no'
+                ? 'ZBEN not approved'
+                : chemoZben === 'yes'
+                  ? 'ZBEN eligible'
+                  : undefined
+      } else if (specialPkg === 'blood') {
+        branch = bloodPatient === 'hd' ? 'HD Patient' : bloodPatient === 'onco' ? 'Onco Patient' : undefined
+      } else if (specialPkg === 'animalbite') {
+        branch =
+          animalVisit === 'first'
+            ? 'First visit'
+            : animalVisit === 'scheduled'
+              ? 'Scheduled visit'
+              : undefined
+      }
+      return { flow_name: map[specialPkg] || specialPkg, branch }
+    }
+    if (benefitType === 'er') {
+      return {
+        flow_name: erSub === 'admissible' ? 'ER – Admissible' : erSub === 'non-admissible' ? 'ER – OECB' : 'ER',
+      }
+    }
+    if (benefitType === 'yakap') {
+      return {
+        flow_name:
+          yakapSub === 'gamot'
+            ? 'YAKAP – Gamot'
+            : yakapSub === 'cancer'
+              ? 'YAKAP – Cancer Screening'
+              : 'YAKAP',
+      }
+    }
+    if (benefitType === 'zbenefit') {
+      return { flow_name: 'Z-BEN' }
+    }
+    return { flow_name: path[path.length - 1] || 'Unknown flow' }
+  }
+
+  /** Call when pathway is complete — logs to Supabase then resets. */
+  const finishPatient = () => {
+    const meta = getCompletionMeta()
+    if (meta) {
+      void saveFlowCompletion({
+        flow_name: meta.flow_name,
+        branch: meta.branch,
+        entry_type: entryType,
+      })
+    }
+    restart()
   }
 
   const restart = () => {
@@ -3289,7 +3409,7 @@ export default function App() {
               </button>
             )}
             {isEnd && (
-              <button className="btn btn-primary" onClick={restart}>
+              <button className="btn btn-primary" onClick={finishPatient}>
                 New Patient
               </button>
             )}
@@ -3803,7 +3923,7 @@ export default function App() {
                     Open Cancer Screening →
                   </button>
                 )}
-                <button className="btn btn-primary" onClick={restart}>
+                <button className="btn btn-primary" onClick={finishPatient}>
                   New Patient
                 </button>
               </div>
@@ -4037,7 +4157,7 @@ export default function App() {
               </button>
             )}
             {isDischarged && (
-              <button className="btn btn-primary" onClick={restart}>
+              <button className="btn btn-primary" onClick={finishPatient}>
                 New Patient
               </button>
             )}
@@ -4565,7 +4685,7 @@ export default function App() {
                   Next Step →
                 </button>
               ) : (
-                <button className="btn btn-primary" onClick={restart}>
+                <button className="btn btn-primary" onClick={finishPatient}>
                   New Patient
                 </button>
               )}
@@ -4979,7 +5099,7 @@ export default function App() {
                 </button>
               )}
               {isEnd && (
-                <button className="btn btn-primary" onClick={restart}>
+                <button className="btn btn-primary" onClick={finishPatient}>
                   New Patient
                 </button>
               )}
@@ -5381,7 +5501,7 @@ export default function App() {
                 </button>
               )}
               {isEnd && (
-                <button className="btn btn-primary" onClick={restart}>
+                <button className="btn btn-primary" onClick={finishPatient}>
                   New Patient
                 </button>
               )}
@@ -5484,7 +5604,7 @@ export default function App() {
                   <div className="note-box green" style={{ marginBottom: 14 }}>
                     Pathway complete. Start a new patient when ready.
                   </div>
-                  <button className="btn btn-primary" onClick={restart}>
+                  <button className="btn btn-primary" onClick={finishPatient}>
                     New Patient
                   </button>
                 </>
@@ -5692,7 +5812,7 @@ export default function App() {
                 </button>
               )}
               {isEnd && (
-                <button className="btn btn-primary" onClick={restart}>
+                <button className="btn btn-primary" onClick={finishPatient}>
                   New Patient
                 </button>
               )}
@@ -5878,7 +5998,7 @@ export default function App() {
                 </button>
               )}
               {isEnd && (
-                <button className="btn btn-primary" onClick={restart}>
+                <button className="btn btn-primary" onClick={finishPatient}>
                   New Patient
                 </button>
               )}
@@ -6146,7 +6266,7 @@ export default function App() {
 
       <div className="nav-row">
         <button className="btn btn-outline" onClick={goBack}>← Back</button>
-        <button className="btn btn-primary" onClick={restart}>New Patient</button>
+        <button className="btn btn-primary" onClick={finishPatient}>New Patient</button>
       </div>
     </div>
   )

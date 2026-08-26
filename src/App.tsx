@@ -543,14 +543,31 @@ export default function App() {
     }
 
     if (screen === 4) {
-      // ER Triage: if a Level 1–4 was selected, go back to level list first
+      // Level 5: if already chose Manage in ER, step back to Level 5 choices first
+      if (
+        entryType === 'er' &&
+        benefitType === 'er' &&
+        path.some((p) => p.includes('Managed in ER')) &&
+        !erSub
+      ) {
+        setPath((p) => p.filter((x) => !x.includes('Managed in ER')))
+        return
+      }
+      // ER Triage: if a Level was selected, go back to level list first
       if (
         entryType === 'er' &&
         benefitType === 'er' &&
         path.some((p) => p.startsWith('Level ')) &&
         !erSub
       ) {
-        setPath((p) => p.filter((x) => !x.startsWith('Level ')))
+        setPath((p) =>
+          p.filter(
+            (x) =>
+              !x.startsWith('Level ') &&
+              !x.includes('Managed in ER') &&
+              !x.includes('Endorse to OPD'),
+          ),
+        )
         return
       }
       // ER Triage opened from Start → back to Patient Entry
@@ -1022,9 +1039,141 @@ export default function App() {
         (entryType === 'er' && !path.includes('Clinical Classification'))
 
       if (fromStartEr) {
-        // After picking Level 1–4, show Admissible vs OECB (27 symptoms) choice
+        // After picking a triage level
         const selectedLevel = path.find((p) => p.startsWith('Level '))
         if (selectedLevel && !erSub) {
+          // Level 5 – Non-Urgent: do NOT go straight to YAKAP.
+          // Must be seen first in ER or OPD private clinic.
+          // YAKAP only after discharge on follow-up if indigent.
+          if (selectedLevel.startsWith('Level 5')) {
+            const managedInEr = path.some((p) => p.includes('Managed in ER'))
+            if (managedInEr) {
+              return (
+                <div className="screen">
+                  <PathBreadcrumb path={path} />
+                  <div className="result-header">
+                    <h2>Level 5 – Non-Urgent · Discharged</h2>
+                    <p>Seen and managed in ER · Not enrolled in YAKAP at this visit</p>
+                    <div className="badge">ER Non-Urgent</div>
+                  </div>
+                  <div className="component-list" style={{ marginTop: 12 }}>
+                    <div className="component-card">
+                      <div className="comp-icon">1</div>
+                      <div>
+                        <h4>Seen in ER</h4>
+                        <p>ER physician assessment and management for non-urgent case.</p>
+                      </div>
+                    </div>
+                    <div className="component-card">
+                      <div className="comp-icon">2</div>
+                      <div>
+                        <h4>Treat / Observe → Discharge</h4>
+                        <p>Complete ER care and discharge the patient.</p>
+                      </div>
+                    </div>
+                    <div className="component-card">
+                      <div className="comp-icon">3</div>
+                      <div>
+                        <h4>If Indigent → YAKAP on Follow-up</h4>
+                        <p>
+                          Only after discharge: refer eligible indigent patients to YAKAP for
+                          follow-up (not at triage / not same-visit enrollment).
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="note-box blue" style={{ marginTop: 14 }}>
+                    Level 5 patients are <strong>not</strong> placed under YAKAP immediately. They
+                    must be seen first in ER or in our OPD private clinic. YAKAP referral is for
+                    indigents on post-discharge follow-up only.
+                  </div>
+                  <div className="nav-row">
+                    <button className="btn btn-outline" onClick={goBack}>
+                      ← Back
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => {
+                        void saveFlowCompletion({
+                          flow_name: 'ER – Level 5 Non-Urgent',
+                          branch: 'Managed in ER → Discharge',
+                          entry_type: entryType,
+                        })
+                        restart()
+                      }}
+                    >
+                      New Patient
+                    </button>
+                  </div>
+                </div>
+              )
+            }
+
+            return (
+              <div className="screen">
+                <PathBreadcrumb path={path} />
+                <div className="section-title">Level 5 – Non-Urgent</div>
+                <p className="section-desc">
+                  Do <strong>not</strong> enroll in YAKAP immediately. Patient must first be seen
+                  in the ER itself or in our OPD private clinic. If indigent, refer to YAKAP only
+                  after discharge on follow-up.
+                </p>
+                <div className="card-grid">
+                  <button
+                    className="choice-card er-card"
+                    onClick={() => {
+                      setPath((p) => [...p, 'Managed in ER → Discharge'])
+                    }}
+                  >
+                    <span className="level-badge l5">ER</span>
+                    <h3>Manage in ER</h3>
+                    <p>
+                      Seen and managed in ER (non-urgent) → Discharge.
+                      <br />
+                      If indigent → YAKAP on follow-up only
+                    </p>
+                  </button>
+                  <button
+                    className="choice-card"
+                    onClick={() => {
+                      setPath((p) => [...p, 'Endorse to OPD Private Clinic'])
+                      setBenefitType('consultation')
+                      setErSub(null)
+                      setYakapSub(null)
+                      setConsultPatient(null)
+                      setConsultRx(null)
+                      setConsultYakapReg(null)
+                      setConsultWantReg(null)
+                      setConsultGamot(null)
+                      setConsultDiag(null)
+                      setConsultCancer(null)
+                      setProcessStep(0)
+                      setScreen(5)
+                    }}
+                  >
+                    <span className="level-badge l4">OPD</span>
+                    <h3>Endorse to OPD Private Clinic</h3>
+                    <p>
+                      Route to Consultation pathway (Private / Walk-in / Indigent).
+                      <br />
+                      YAKAP only if indigent, after discharge on F/U
+                    </p>
+                  </button>
+                </div>
+                <div className="note-box blue" style={{ marginTop: 14 }}>
+                  Client rule: Level 5 is not YAKAP at triage. Seen first in ER or OPD private
+                  clinic; indigent patients may be referred to YAKAP on post-discharge follow-up.
+                </div>
+                <div className="nav-row">
+                  <button className="btn btn-outline" onClick={goBack}>
+                    ← Back
+                  </button>
+                </div>
+              </div>
+            )
+          }
+
+          // Levels 1–4: Admissible vs OECB (27 symptoms)
           return (
             <div className="screen">
               <PathBreadcrumb path={path} />
@@ -1085,7 +1234,7 @@ export default function App() {
             <div className="section-title">3A. For ER Patients – Triage & Benefit Determination</div>
             <p className="section-desc">
               Select the triage level. Levels 1–4 → then choose Admitted or OECB (27 symptoms).
-              Level 5 → YAKAP (Indigent).
+              Level 5 → seen first in ER or OPD private clinic (not YAKAP at triage).
             </p>
             <div className="card-grid">
               <button
@@ -1129,24 +1278,25 @@ export default function App() {
                 <p>Can wait short period → Manage per ER Protocol → then Admitted or OECB</p>
               </button>
               <button
-                className="choice-card green-card"
+                className="choice-card"
                 onClick={() => {
-                  setBenefitType('yakap')
-                  setErSub(null)
-                  setYakapSub(null)
-                  setPath((p) => [...p, 'Level 5 – Non-Urgent → YAKAP (Indigent)'])
-                  setScreen(4)
+                  setPath((p) => [...p, 'Level 5 – Non-Urgent'])
                 }}
               >
                 <span className="level-badge l5">LEVEL 5</span>
                 <h3>Non-Urgent</h3>
-                <p>Endorsed to YAKAP Doctor for Consultation — YAKAP (Indigent)</p>
+                <p>
+                  Seen first in ER or OPD private clinic — not YAKAP at triage.
+                  <br />
+                  Indigent → YAKAP on post-discharge follow-up only
+                </p>
               </button>
             </div>
             <div className="note-box blue" style={{ marginTop: 14 }}>
               Levels 1–4: after ER management, choose <strong>Admitted</strong> (ACR / NBB) or{' '}
               <strong>OECB</strong> if the case matches one of the 27 Emergency Symptoms and is
-              discharged within 24 hours. Level 5 → YAKAP (Indigent).
+              discharged within 24 hours. Level 5: seen in ER or OPD private clinic first; YAKAP
+              only for indigents after discharge on follow-up.
             </div>
             <div className="nav-row">
               <button className="btn btn-outline" onClick={goBack}>

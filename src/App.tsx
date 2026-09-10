@@ -1,88 +1,136 @@
 import { useState, useEffect } from 'react'
 import { saveFlowCompletion } from './lib/flowMonitor'
 
-/** PhilHealth YAKAP GAMOT (21 Core) — Hospital Pharmacy / Epress */
-const GAMOT_21 = [
-  'Amoxicillin',
-  'Ciprofloxacin',
-  'Clarithromycin',
-  'Co-amoxiclav',
-  'Co-trimoxazole',
-  'Nitrofurantoin',
-  'Aspirin',
-  'Fluticasone + Salmeterol',
-  'Prednisone',
-  'Salbutamol',
-  'Simvastatin',
-  'Chlorphenamine',
-  'Oral Rehydration Salts',
-  'Paracetamol',
-  'Gliclazide',
-  'Metformin',
-  'Amlodipine',
-  'Enalapril',
-  'Hydrochlorothiazide',
-  'Losartan',
-  'Metoprolol',
+/** PhilHealth YAKAP GAMOT (21 Core) — Hospital Pharmacy / Epress · always in stock */
+const GAMOT_21_BY_CATEGORY: { category: string; items: string[] }[] = [
+  {
+    category: 'Anti-Infectious',
+    items: [
+      'Amoxicillin',
+      'Ciprofloxacin',
+      'Clarithromycin',
+      'Co-amoxiclav',
+      'Co-trimoxazole',
+      'Nitrofurantoin',
+    ],
+  },
+  {
+    category: 'Anti-Asthma & COPD',
+    items: ['Fluticasone + Salmeterol', 'Prednisone', 'Salbutamol'],
+  },
+  {
+    category: 'Anti-Diabetics',
+    items: ['Gliclazide', 'Metformin'],
+  },
+  {
+    category: 'Anti-Hypertensive & Cardiology',
+    items: ['Amlodipine', 'Enalapril', 'Hydrochlorothiazide', 'Losartan', 'Metoprolol'],
+  },
+  {
+    category: 'Anti-Dyslipidemia',
+    items: ['Simvastatin'],
+  },
+  {
+    category: 'Anti-Thrombotics',
+    items: ['Aspirin'],
+  },
+  {
+    category: 'Supportive / Other Therapy',
+    items: ['Chlorphenamine', 'Oral Rehydration Salts', 'Paracetamol'],
+  },
 ]
 
 /** PhilHealth YAKAP E-GAMOT (54) — MedPure / Gamot App · under ₱20,000 annual limit */
-const EGAMOT_54 = [
-  'Albendazole',
-  'Azithromycin',
-  'Cefixime',
-  'Cefuroxime',
-  'Clindamycin',
-  'Clotrimazole',
-  'Cloxacillin',
-  'Doxycycline',
-  'Erythromycin',
-  'Fluconazole',
-  'Ketoconazole',
-  'Mebendazole',
-  'Metronidazole',
-  'Oseltamivir',
-  'Tobramycin',
-  'Clopidogrel',
-  'Budesonide + Formoterol',
-  'Ipratropium',
-  'Montelukast',
-  'Ipratropium + Salbutamol',
-  'Tiotropium',
-  'Aluminum Hydroxide + Magnesium Hydroxide',
-  'Butamirate',
-  'Celecoxib',
-  'Cetirizine',
-  'Colchicine',
-  'Diphenhydramine',
-  'Ferrous Salt (Iron Preparations)',
-  'Folic acid + Iron Ferrous',
-  'Ibuprofen',
-  'Lagundi (Vitex Negundo)',
-  'Loratadine',
-  'Mefenamic Acid',
-  'Naproxen',
-  'Omeprazole',
-  'Zinc',
-  'Dapagliflozin',
-  'Atorvastatin',
-  'Fenofibrate',
-  'Rosuvastatin',
-  'Atenolol',
-  'Captopril',
-  'Clonidine',
-  'Diltiazem',
-  'Enalapril + Hydrochlorothiazide',
-  'Isosorbide Dinitrate',
-  'Isosorbide Mononitrate',
-  'Methyldopa',
-  'Tamsulosin',
-  'Telmisartan',
-  'Telmisartan + Hydrochlorothiazide',
-  'Valsartan',
-  'Valsartan + Hydrochlorothiazide',
-  'Gabapentin',
+const EGAMOT_54_BY_CATEGORY: { category: string; items: string[] }[] = [
+  {
+    category: 'Anti-Infectious',
+    items: [
+      'Albendazole',
+      'Azithromycin',
+      'Cefixime',
+      'Cefuroxime',
+      'Clindamycin',
+      'Clotrimazole',
+      'Cloxacillin',
+      'Doxycycline',
+      'Erythromycin',
+      'Fluconazole',
+      'Ketoconazole',
+      'Mebendazole',
+      'Metronidazole',
+      'Oseltamivir',
+      'Tobramycin',
+    ],
+  },
+  {
+    category: 'Anti-Asthma & COPD',
+    items: [
+      'Budesonide + Formoterol',
+      'Ipratropium',
+      'Ipratropium + Salbutamol',
+      'Montelukast',
+      'Tiotropium',
+    ],
+  },
+  {
+    category: 'Anti-Hypertensive & Cardiology',
+    items: [
+      'Atenolol',
+      'Captopril',
+      'Clonidine',
+      'Diltiazem',
+      'Enalapril + Hydrochlorothiazide',
+      'Isosorbide Dinitrate',
+      'Isosorbide Mononitrate',
+      'Methyldopa',
+      'Tamsulosin',
+      'Telmisartan',
+      'Telmisartan + Hydrochlorothiazide',
+      'Valsartan',
+      'Valsartan + Hydrochlorothiazide',
+    ],
+  },
+  {
+    category: 'Anti-Thrombotics',
+    items: ['Clopidogrel'],
+  },
+  {
+    category: 'Anti-Dyslipidemia',
+    items: ['Atorvastatin', 'Fenofibrate', 'Rosuvastatin'],
+  },
+  {
+    category: 'Anti-Diabetics',
+    items: ['Dapagliflozin'],
+  },
+  {
+    category: 'Nervous System',
+    items: ['Gabapentin'],
+  },
+  {
+    category: 'Supportive / Other Therapy',
+    items: [
+      'Aluminum Hydroxide + Magnesium Hydroxide',
+      'Butamirate',
+      'Celecoxib',
+      'Cetirizine',
+      'Colchicine',
+      'Diphenhydramine',
+      'Ferrous Salt (Iron Preparations)',
+      'Folic acid + Iron Ferrous',
+      'Ibuprofen',
+      'Lagundi (Vitex Negundo)',
+      'Loratadine',
+      'Mefenamic Acid',
+      'Naproxen',
+      'Omeprazole',
+      'Zinc',
+    ],
+  },
 ]
+
+// Flat arrays kept for any other references / counting
+const GAMOT_21 = GAMOT_21_BY_CATEGORY.flatMap((c) => c.items)
+const EGAMOT_54 = EGAMOT_54_BY_CATEGORY.flatMap((c) => c.items)
 
 type Screen = 1 | 2 | 3 | 4 | 5 | 6
 type EntryType = 'er' | 'opd' | 'direct' | null
@@ -2125,87 +2173,6 @@ export default function App() {
     )
   }
 
-  // PhilHealth YAKAP medicine lists (CY 2026)
-  const GAMOT_21 = [
-    'Amoxicillin',
-    'Ciprofloxacin',
-    'Clarithromycin',
-    'Co-amoxiclav',
-    'Co-trimoxazole',
-    'Nitrofurantoin',
-    'Aspirin',
-    'Fluticasone + Salmeterol',
-    'Prednisone',
-    'Salbutamol',
-    'Simvastatin',
-    'Chlorphenamine',
-    'Oral Rehydration Salts',
-    'Paracetamol',
-    'Gliclazide',
-    'Metformin',
-    'Amlodipine',
-    'Enalapril',
-    'Hydrochlorothiazide',
-    'Losartan',
-    'Metoprolol',
-  ]
-  const EGAMOT_54 = [
-    'Albendazole',
-    'Azithromycin',
-    'Cefixime',
-    'Cefuroxime',
-    'Clindamycin',
-    'Clotrimazole',
-    'Cloxacillin',
-    'Doxycycline',
-    'Erythromycin',
-    'Fluconazole',
-    'Ketoconazole',
-    'Mebendazole',
-    'Metronidazole',
-    'Oseltamivir',
-    'Tobramycin',
-    'Clopidogrel',
-    'Budesonide + Formoterol',
-    'Ipratropium',
-    'Montelukast',
-    'Ipratropium + Salbutamol',
-    'Tiotropium',
-    'Aluminum Hydroxide + Magnesium Hydroxide',
-    'Butamirate',
-    'Celecoxib',
-    'Cetirizine',
-    'Colchicine',
-    'Diphenhydramine',
-    'Ferrous Salt (Iron Preparations)',
-    'Folic acid + Iron Ferrous',
-    'Ibuprofen',
-    'Lagundi (Vitex Negundo)',
-    'Loratadine',
-    'Mefenamic Acid',
-    'Naproxen',
-    'Omeprazole',
-    'Zinc',
-    'Dapagliflozin',
-    'Atorvastatin',
-    'Fenofibrate',
-    'Rosuvastatin',
-    'Atenolol',
-    'Captopril',
-    'Clonidine',
-    'Diltiazem',
-    'Enalapril + Hydrochlorothiazide',
-    'Isosorbide Dinitrate',
-    'Isosorbide Mononitrate',
-    'Methyldopa',
-    'Tamsulosin',
-    'Telmisartan',
-    'Telmisartan + Hydrochlorothiazide',
-    'Valsartan',
-    'Valsartan + Hydrochlorothiazide',
-    'Gabapentin',
-  ]
-
   // ---------- GAMOT FLOW (matches YAKAP Medicine & Laboratory Process Flow) ----------
   const renderGamotFlow = () => {
     const totalSteps = 8
@@ -2434,15 +2401,20 @@ export default function App() {
                     Patient proceeds to <strong>Medpure</strong> for E-GAMOT (54) dispensing via Gamot
                     App. Under ₱20,000 annual benefit limit per member.
                   </p>
-                  <div className="section-label">E-GAMOT (54) medicine list</div>
-                  <div className="med-grid med-grid-3">
-                    {EGAMOT_54.map((name, i) => (
-                      <div key={name} className="med-item">
-                        <span className="med-num">{i + 1}</span>
-                        <span>{name}</span>
+                  <div className="section-label">E-GAMOT (54) medicine list — by category</div>
+                  {EGAMOT_54_BY_CATEGORY.map((cat) => (
+                    <div key={cat.category} className="med-category">
+                      <div className="med-cat-title">{cat.category}</div>
+                      <div className="med-grid med-grid-3">
+                        {cat.items.map((name, i) => (
+                          <div key={name} className="med-item">
+                            <span className="med-num">{i + 1}</span>
+                            <span>{name}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                   <p className="section-desc" style={{ marginTop: 8 }}>
                     Covered under PhilHealth YAKAP for CY 2026
                   </p>
@@ -2454,15 +2426,20 @@ export default function App() {
                     Patient proceeds to <strong>Hospital Pharmacy</strong> for GAMOT (21 Core) via
                     Epress.
                   </p>
-                  <div className="section-label">GAMOT (21 Core) medicine list</div>
-                  <div className="med-grid med-grid-3">
-                    {GAMOT_21.map((name, i) => (
-                      <div key={name} className="med-item">
-                        <span className="med-num">{i + 1}</span>
-                        <span>{name}</span>
+                  <div className="section-label">GAMOT (21 Core) medicine list — by category</div>
+                  {GAMOT_21_BY_CATEGORY.map((cat) => (
+                    <div key={cat.category} className="med-category">
+                      <div className="med-cat-title">{cat.category}</div>
+                      <div className="med-grid med-grid-3">
+                        {cat.items.map((name, i) => (
+                          <div key={name} className="med-item">
+                            <span className="med-num">{i + 1}</span>
+                            <span>{name}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
                   <p className="section-desc" style={{ marginTop: 8 }}>
                     Covered under PhilHealth YAKAP for CY 2026
                   </p>

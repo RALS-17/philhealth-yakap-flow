@@ -843,6 +843,31 @@ h1 {
   border-color: var(--blue);
 }
 
+/* Medicine list by category */
+.med-category {
+  margin-bottom: 14px;
+}
+
+.med-cat-title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--blue-dark, #0d35b8);
+  background: var(--blue-light, #e8eeff);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  padding: 8px 12px;
+  margin: 0;
+}
+
+.med-category .med-grid {
+  border-radius: 0 0 12px 12px;
+  margin-top: 0;
+  box-shadow: none;
+}
+
 /* Medicine list multi-column grid */
 .med-grid {
   display: grid;

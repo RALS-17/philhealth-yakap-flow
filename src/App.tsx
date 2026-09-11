@@ -6401,31 +6401,42 @@ export default function App() {
   return (
     <div className="container">
       <header>
-        <div className="brand">
-          <img
-            src={`${import.meta.env.BASE_URL}global-care-logo.svg`}
-            alt="Global Care Canlubang"
-          />
-          <div className="brand-text">
-            <strong>GLOBAL CARE</strong>
-            <span>Canlubang</span>
+        <div className="header-top">
+          <div className="brand">
+            <img
+              src={`${import.meta.env.BASE_URL}global-care-logo.svg`}
+              alt="Global Care Canlubang"
+            />
+            <div className="brand-text">
+              <strong>GLOBAL CARE</strong>
+              <span>Canlubang</span>
+            </div>
           </div>
+          <a
+            href="#monitor"
+            className="dash-login-icon-btn"
+            aria-label="Login to Dashboard"
+            title="Login"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="22"
+              height="22"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+            <span className="dash-login-tooltip">Login</span>
+          </a>
         </div>
         <h1>GCare PhilHealth Benefits Utilization Program</h1>
         <p className="tagline">Global Care Canlubang PhilHealth Ecosystem</p>
-        <p style={{ marginTop: 8 }}>
-          <a
-            href="#monitor"
-            style={{
-              fontSize: '0.82rem',
-              fontWeight: 700,
-              color: 'var(--blue)',
-              textDecoration: 'none',
-            }}
-          >
-            Open Flow Monitor Dashboard →
-          </a>
-        </p>
       </header>
 
       <ProgressDots step={screen} total={6} />

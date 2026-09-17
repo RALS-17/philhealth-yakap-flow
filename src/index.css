@@ -1510,13 +1510,13 @@ h1 {
   width: 100%;
   min-width: 640px;
   border-collapse: collapse;
-  font-size: 0.78rem;
+  font-size: 0.84rem;
 }
 
 .dash-patient-table th {
   text-align: left;
-  padding: 5px 8px;
-  font-size: 0.64rem;
+  padding: 7px 10px;
+  font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1527,7 +1527,7 @@ h1 {
 }
 
 .dash-patient-table td {
-  padding: 5px 8px;
+  padding: 8px 10px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
   color: #334155;
@@ -1543,7 +1543,7 @@ h1 {
 }
 
 .dash-patient-row-empty td {
-  height: 28px;
+  height: 34px;
   border-bottom: 1px solid #f1f5f9 !important;
   background: transparent;
   color: transparent;
@@ -1575,7 +1575,7 @@ h1 {
 
 .dash-patient-time {
   white-space: nowrap;
-  font-size: 0.74rem;
+  font-size: 0.8rem;
   color: #64748b;
   font-weight: 600;
 }
@@ -1588,7 +1588,7 @@ h1 {
 
 .dash-patient-idle-cell {
   white-space: nowrap;
-  font-size: 0.74rem;
+  font-size: 0.8rem;
   color: #94a3b8;
   font-weight: 600;
 }
@@ -1596,11 +1596,11 @@ h1 {
 .dash-patient-status {
   display: inline-flex;
   align-items: center;
-  font-size: 0.64rem;
+  font-size: 0.7rem;
   font-weight: 800;
   color: #0f766e;
   background: #ccfbf1;
-  padding: 2px 7px;
+  padding: 3px 8px;
   border-radius: 999px;
   white-space: nowrap;
 }

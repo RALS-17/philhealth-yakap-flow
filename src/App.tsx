@@ -1,5 +1,16 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { saveFlowCompletion } from './lib/flowMonitor'
+import {
+  listSessions,
+  upsertSession,
+  deleteSession,
+  getSession,
+  createSessionId,
+  pathSummary,
+  formatSessionTime,
+  type FlowSnapshot,
+  type ParkedSession,
+} from './lib/sessionStore'
 
 /** PhilHealth YAKAP GAMOT (21 Core) — Hospital Pharmacy / Epress · always in stock */
 const GAMOT_21_BY_CATEGORY: { category: string; items: string[] }[] = [
@@ -128,10 +139,6 @@ const EGAMOT_54_BY_CATEGORY: { category: string; items: string[] }[] = [
   },
 ]
 
-// Flat arrays kept for any other references / counting
-const GAMOT_21 = GAMOT_21_BY_CATEGORY.flatMap((c) => c.items)
-const EGAMOT_54 = EGAMOT_54_BY_CATEGORY.flatMap((c) => c.items)
-
 type Screen = 1 | 2 | 3 | 4 | 5 | 6
 type EntryType = 'er' | 'opd' | 'direct' | null
 type BenefitType =
@@ -211,7 +218,7 @@ function ProgressDots({ step, total = 6 }: { step: number; total?: number }) {
   )
 }
 
-export default function App() {
+export default function App({ onLogout, staffEmail }: { onLogout?: () => void; staffEmail?: string } = {}) {
   const [screen, setScreen] = useState<Screen>(1)
   const [path, setPath] = useState<string[]>(['Start'])
   const [entryType, setEntryType] = useState<EntryType>(null)
@@ -251,10 +258,57 @@ export default function App() {
   const [rehabSchedule, setRehabSchedule] = useState<YesNo>(null)
   const [rehabLoa, setRehabLoa] = useState<YesNo>(null)
 
+  // Multi-patient park / resume
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [patientLabel, setPatientLabel] = useState('')
+  /** When current guidance session started (for admin Done duration). */
+  const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null)
+  const [parkedList, setParkedList] = useState<ParkedSession[]>([])
+  const [hubNameInput, setHubNameInput] = useState('')
+  const [sessionMsg, setSessionMsg] = useState<string | null>(null)
+  const [sessionsLoading, setSessionsLoading] = useState(true)
+  const [staffMenuOpen, setStaffMenuOpen] = useState(false)
+  const skipAutoSave = useRef(false)
+  const staffMenuRef = useRef<HTMLDivElement>(null)
+
   // Set logo URL for CSS watermarks on all clickable buttons
   useEffect(() => {
     const logoPath = `${import.meta.env.BASE_URL}global-care-logo.svg`
     document.documentElement.style.setProperty('--logo-url', `url("${logoPath}")`)
+  }, [])
+
+  useEffect(() => {
+    if (!staffMenuOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (staffMenuRef.current && !staffMenuRef.current.contains(e.target as Node)) {
+        setStaffMenuOpen(false)
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setStaffMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [staffMenuOpen])
+
+  // Load shared sessions from database (falls back to this device)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setSessionsLoading(true)
+      const rows = await listSessions()
+      if (!cancelled) {
+        setParkedList(rows)
+        setSessionsLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const clearSubState = () => {
@@ -412,18 +466,13 @@ export default function App() {
         return
       }
       if (rehabCardio === 'no' && rehabPay && processStep >= 5 && rehabSchedule) {
-        // back from schedule decision
-        if ((rehabPay === 'cash' && processStep === 5) || (rehabPay === 'hmo' && processStep === 6)) {
+        // back from schedule decision (PhilHealth-covered path)
+        if (processStep === 5) {
           setRehabSchedule(null)
           setRehabLoa(null)
           setProcessStep((s) => s - 1)
           return
         }
-      }
-      if (rehabCardio === 'no' && rehabPay === 'hmo' && rehabSchedule === 'yes' && rehabLoa) {
-        setRehabLoa(null)
-        setProcessStep((s) => s - 1)
-        return
       }
       setProcessStep((s) => s - 1)
       return
@@ -737,8 +786,8 @@ export default function App() {
       let branch: string | undefined
       if (specialPkg === 'rehab') {
         if (rehabCardio === 'yes') branch = 'Cardio referral'
-        else if (rehabPay === 'cash') branch = 'Cash'
-        else if (rehabPay === 'hmo') branch = rehabLoa === 'yes' ? 'HMO LOA approved' : rehabLoa === 'no' ? 'HMO LOA denied' : 'HMO'
+        else if (rehabPay === 'cash') branch = 'Covered by PhilHealth'
+        else if (rehabPay === 'hmo') branch = 'Covered by PhilHealth'
       } else if (specialPkg === 'chemo') {
         branch =
           chemoZben === 'no'
@@ -783,20 +832,156 @@ export default function App() {
     return { flow_name: path[path.length - 1] || 'Unknown flow' }
   }
 
-  /** Call when pathway is complete — logs to Supabase then resets. */
+  /** Call when pathway is complete — logs to Supabase (admin Done record) then resets. */
   const finishPatient = () => {
     const meta = getCompletionMeta()
     if (meta) {
+      const pathStr = path.filter(Boolean).join(' → ')
       void saveFlowCompletion({
         flow_name: meta.flow_name,
         branch: meta.branch,
         entry_type: entryType,
+        patient_label: patientLabel || 'Patient',
+        path: pathStr || meta.flow_name,
+        started_at: sessionStartedAt || undefined,
       })
+    }
+    if (sessionId) {
+      void deleteSession(sessionId)
     }
     restart()
   }
 
-  const restart = () => {
+  const getSnapshot = useCallback((): FlowSnapshot => {
+    return {
+      screen,
+      path,
+      entryType,
+      benefitType,
+      erSub,
+      specialPkg,
+      yakapSub,
+      cancerStep,
+      oecbTab,
+      detailView,
+      processStep,
+      gamotBranch,
+      gamotRx,
+      gamotDispensed,
+      acrPackage,
+      cancerScreenType,
+      zQualified,
+      nbbAccom,
+      diagnosticBranch,
+      heartPath,
+      consultPatient,
+      consultRx,
+      consultYakapReg,
+      consultWantReg,
+      consultGamot,
+      consultDiag,
+      consultCancer,
+      chemoZben,
+      chemoPhicOk,
+      directPay,
+      bloodPatient,
+      animalVisit,
+      animalPay,
+      animalLoa,
+      rehabCardio,
+      rehabPay,
+      rehabSchedule,
+      rehabLoa,
+    }
+  }, [
+    screen,
+    path,
+    entryType,
+    benefitType,
+    erSub,
+    specialPkg,
+    yakapSub,
+    cancerStep,
+    oecbTab,
+    detailView,
+    processStep,
+    gamotBranch,
+    gamotRx,
+    gamotDispensed,
+    acrPackage,
+    cancerScreenType,
+    zQualified,
+    nbbAccom,
+    diagnosticBranch,
+    heartPath,
+    consultPatient,
+    consultRx,
+    consultYakapReg,
+    consultWantReg,
+    consultGamot,
+    consultDiag,
+    consultCancer,
+    chemoZben,
+    chemoPhicOk,
+    directPay,
+    bloodPatient,
+    animalVisit,
+    animalPay,
+    animalLoa,
+    rehabCardio,
+    rehabPay,
+    rehabSchedule,
+    rehabLoa,
+  ])
+
+  const applySnapshot = (snap: FlowSnapshot) => {
+    skipAutoSave.current = true
+    setScreen(snap.screen)
+    setPath(Array.isArray(snap.path) && snap.path.length ? snap.path : ['Start'])
+    setEntryType(snap.entryType ?? null)
+    setBenefitType(snap.benefitType ?? null)
+    setErSub(snap.erSub ?? null)
+    setSpecialPkg(snap.specialPkg ?? null)
+    setYakapSub(snap.yakapSub ?? null)
+    setCancerStep(snap.cancerStep ?? null)
+    setOecbTab(snap.oecbTab ?? 'overview')
+    setDetailView(snap.detailView ?? 'main')
+    setProcessStep(typeof snap.processStep === 'number' ? snap.processStep : 0)
+    setGamotBranch(snap.gamotBranch ?? null)
+    setGamotRx(snap.gamotRx ?? null)
+    setGamotDispensed(snap.gamotDispensed ?? null)
+    setAcrPackage(snap.acrPackage ?? null)
+    setCancerScreenType(snap.cancerScreenType ?? null)
+    setZQualified(snap.zQualified ?? null)
+    setNbbAccom(snap.nbbAccom ?? null)
+    setDiagnosticBranch(snap.diagnosticBranch ?? null)
+    setHeartPath(snap.heartPath ?? null)
+    setConsultPatient(snap.consultPatient ?? null)
+    setConsultRx(snap.consultRx ?? null)
+    setConsultYakapReg(snap.consultYakapReg ?? null)
+    setConsultWantReg(snap.consultWantReg ?? null)
+    setConsultGamot(snap.consultGamot ?? null)
+    setConsultDiag(snap.consultDiag ?? null)
+    setConsultCancer(snap.consultCancer ?? null)
+    setChemoZben(snap.chemoZben ?? null)
+    setChemoPhicOk(snap.chemoPhicOk ?? null)
+    setDirectPay(snap.directPay ?? null)
+    setBloodPatient(snap.bloodPatient ?? null)
+    setAnimalVisit(snap.animalVisit ?? null)
+    setAnimalPay(snap.animalPay ?? null)
+    setAnimalLoa(snap.animalLoa ?? null)
+    setRehabCardio(snap.rehabCardio ?? null)
+    setRehabPay(snap.rehabPay ?? null)
+    setRehabSchedule(snap.rehabSchedule ?? null)
+    setRehabLoa(snap.rehabLoa ?? null)
+    // re-enable autosave on next tick
+    setTimeout(() => {
+      skipAutoSave.current = false
+    }, 0)
+  }
+
+  const resetFlowState = () => {
+    skipAutoSave.current = true
     setScreen(1)
     setPath(['Start'])
     setEntryType(null)
@@ -835,10 +1020,148 @@ export default function App() {
     setRehabPay(null)
     setRehabSchedule(null)
     setRehabLoa(null)
+    setTimeout(() => {
+      skipAutoSave.current = false
+    }, 0)
   }
+
+  const refreshParkedList = async () => {
+    const rows = await listSessions()
+    setParkedList(rows)
+  }
+
+  const restart = () => {
+    setSessionId(null)
+    setPatientLabel('')
+    setSessionStartedAt(null)
+    resetFlowState()
+    void refreshParkedList()
+  }
+
+  const startNewPatient = (rawLabel: string) => {
+    const label = rawLabel.trim()
+    if (!label) {
+      setSessionMsg('Enter a patient name or label to start.')
+      return
+    }
+    const id = createSessionId()
+    const started = new Date().toISOString()
+    skipAutoSave.current = true
+    setSessionId(id)
+    setPatientLabel(label)
+    setSessionStartedAt(started)
+    setHubNameInput('')
+    setSessionMsg(null)
+    resetFlowState()
+    // Persist empty start so it appears if they park immediately
+    const emptySnap: FlowSnapshot = {
+      screen: 1,
+      path: ['Start'],
+      entryType: null,
+      benefitType: null,
+      erSub: null,
+      specialPkg: null,
+      yakapSub: null,
+      cancerStep: null,
+      oecbTab: 'overview',
+      detailView: 'main',
+      processStep: 0,
+      gamotBranch: null,
+      gamotRx: null,
+      gamotDispensed: null,
+      acrPackage: null,
+      cancerScreenType: null,
+      zQualified: null,
+      nbbAccom: null,
+      diagnosticBranch: null,
+      heartPath: null,
+      consultPatient: null,
+      consultRx: null,
+      consultYakapReg: null,
+      consultWantReg: null,
+      consultGamot: null,
+      consultDiag: null,
+      consultCancer: null,
+      chemoZben: null,
+      chemoPhicOk: null,
+      directPay: null,
+      bloodPatient: null,
+      animalVisit: null,
+      animalPay: null,
+      animalLoa: null,
+      rehabCardio: null,
+      rehabPay: null,
+      rehabSchedule: null,
+      rehabLoa: null,
+    }
+    void upsertSession(id, label, emptySnap).then(() => refreshParkedList())
+    setTimeout(() => {
+      skipAutoSave.current = false
+    }, 0)
+  }
+
+  const parkCurrentSession = () => {
+    if (!sessionId) {
+      setSessionMsg('No active patient to save.')
+      return
+    }
+    const id = sessionId
+    const label = patientLabel || 'Patient'
+    const snap = getSnapshot()
+    void upsertSession(id, label, snap).then(() => refreshParkedList())
+    setSessionMsg(`Saved “${label}”. You can resume on any device.`)
+    setSessionId(null)
+    setPatientLabel('')
+    setSessionStartedAt(null)
+    resetFlowState()
+  }
+
+  const resumeSession = (id: string) => {
+    void (async () => {
+      const row = await getSession(id)
+      if (!row) {
+        setSessionMsg('That saved patient was not found.')
+        await refreshParkedList()
+        return
+      }
+      setSessionId(row.id)
+      setPatientLabel(row.label)
+      setSessionStartedAt(row.createdAt)
+      setSessionMsg(null)
+      applySnapshot(row.snapshot)
+    })()
+  }
+
+  const discardSession = (id: string, label: string) => {
+    if (!window.confirm(`Remove saved patient “${label}”? This cannot be undone.`)) return
+    void deleteSession(id).then(() => refreshParkedList())
+    if (sessionId === id) {
+      setSessionId(null)
+      setPatientLabel('')
+      setSessionStartedAt(null)
+      resetFlowState()
+    }
+    setSessionMsg(`Removed “${label}”.`)
+  }
+
+  // Auto-save active session when flow state changes (DB + local cache)
+  useEffect(() => {
+    if (!sessionId || skipAutoSave.current) return
+    const t = window.setTimeout(() => {
+      if (skipAutoSave.current) return
+      void upsertSession(sessionId, patientLabel || 'Patient', getSnapshot()).then(() =>
+        refreshParkedList(),
+      )
+    }, 500)
+    return () => window.clearTimeout(t)
+  }, [sessionId, patientLabel, getSnapshot])
 
   const selectEntry = (type: EntryType) => {
     if (!type) return
+    if (!sessionId) {
+      setSessionMsg('Start or resume a patient first.')
+      return
+    }
     const labels: Record<string, string> = {
       er: 'ER',
       opd: 'OPD',
@@ -971,41 +1294,128 @@ export default function App() {
   }
 
   // ---------- SCREEN 1 ----------
-  const renderScreen1 = () => (
-    <div className="screen">
-      <PathBreadcrumb path={path} />
-      <div className="section-title">Patient Enters GCC</div>
-      <p className="section-desc">Select how the patient arrives at Global Care Canlubang.</p>
-      <div className="card-grid">
-        <button className="choice-card er-card" onClick={() => selectEntry('er')}>
-          <div className="icon">🚑</div>
-          <h3>ER</h3>
-          <p>Emergency Room</p>
-          <ul>
-            <li>Acute illness / injury</li>
-            <li>Triage Levels 1–5 · OECB (27 symptoms)</li>
-          </ul>
-        </button>
-        <button className="choice-card green-card" onClick={() => selectEntry('opd')}>
-          <div className="icon">🏥</div>
-          <h3>OPD</h3>
-          <p>Outpatient Department</p>
-          <ul>
-            <li>YAKAP primary care</li>
-            <li>Gamot · Labs · Cancer Screening</li>
-          </ul>
-        </button>
-        <button className="choice-card" onClick={() => selectEntry('direct')}>
-          <div className="icon">📋</div>
-          <h3>Direct Admission</h3>
-          <p>Planned inpatient pathway</p>
-          <ul>
-            <li>Direct Admission → Inpatient ACR</li>
-          </ul>
-        </button>
+  const renderScreen1 = () => {
+    // Hub: no active patient — start new or resume parked
+    if (!sessionId) {
+      return (
+        <div className="screen">
+          <div className="section-title">Patient queue</div>
+          <p className="section-desc">
+            Start a new patient or resume someone you saved while assisting another.
+          </p>
+
+          <div className="session-hub-card">
+            <h3 className="session-hub-heading">New patient</h3>
+            <form
+              className="session-new-form"
+              onSubmit={(e) => {
+                e.preventDefault()
+                startNewPatient(hubNameInput)
+              }}
+            >
+              <input
+                className="session-name-input"
+                type="text"
+                value={hubNameInput}
+                onChange={(e) => setHubNameInput(e.target.value)}
+                placeholder="Name, queue #, or bed (e.g. Maria – ER)"
+                maxLength={80}
+                autoComplete="off"
+              />
+              <button type="submit" className="btn session-start-btn">
+                Start guidance
+              </button>
+            </form>
+            <p className="session-hub-hint">
+              Use a simple label only — no PhilHealth number needed.
+            </p>
+          </div>
+
+          <div className="session-parked-block">
+            <h3 className="session-hub-heading">
+              Saved patients
+              {parkedList.length > 0 && (
+                <span className="session-count-badge">{parkedList.length}</span>
+              )}
+            </h3>
+            {sessionsLoading ? (
+              <p className="session-empty">Loading saved patients…</p>
+            ) : parkedList.length === 0 ? (
+              <p className="session-empty">
+                No saved patients. Progress is shared across devices when connected.
+              </p>
+            ) : (
+              <ul className="session-list">
+                {parkedList.map((s) => (
+                  <li key={s.id} className="session-list-item">
+                    <button
+                      type="button"
+                      className="session-resume-btn"
+                      onClick={() => resumeSession(s.id)}
+                    >
+                      <span className="session-item-name">{s.label}</span>
+                      <span className="session-item-path">{pathSummary(s.snapshot)}</span>
+                      <span className="session-item-time">
+                        Saved {formatSessionTime(s.updatedAt)}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="session-discard-btn"
+                      onClick={() => discardSession(s.id, s.label)}
+                      aria-label={`Remove ${s.label}`}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    // Active session — original entry selection
+    return (
+      <div className="screen">
+        <PathBreadcrumb path={path} />
+        <div className="section-title">Patient Enters GCC</div>
+        <p className="section-desc">
+          Guiding <strong>{patientLabel}</strong> — select how the patient arrives at Global
+          Care Canlubang.
+        </p>
+        <div className="card-grid">
+          <button className="choice-card er-card" onClick={() => selectEntry('er')}>
+            <div className="icon">🚑</div>
+            <h3>ER</h3>
+            <p>Emergency Room</p>
+            <ul>
+              <li>Acute illness / injury</li>
+              <li>Triage Levels 1–5 · OECB (27 symptoms)</li>
+            </ul>
+          </button>
+          <button className="choice-card green-card" onClick={() => selectEntry('opd')}>
+            <div className="icon">🏥</div>
+            <h3>OPD</h3>
+            <p>Outpatient Department</p>
+            <ul>
+              <li>YAKAP primary care</li>
+              <li>Gamot · Labs · Cancer Screening</li>
+            </ul>
+          </button>
+          <button className="choice-card" onClick={() => selectEntry('direct')}>
+            <div className="icon">📋</div>
+            <h3>Direct Admission</h3>
+            <p>Planned inpatient pathway</p>
+            <ul>
+              <li>Direct Admission → Inpatient ACR</li>
+            </ul>
+          </button>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   // ---------- SCREEN 2 ----------
   const renderScreen2 = () => (
@@ -1146,7 +1556,11 @@ export default function App() {
                           flow_name: 'ER – Level 5 Non-Urgent',
                           branch: 'Managed in ER → Discharge',
                           entry_type: entryType,
+                          patient_label: patientLabel || 'Patient',
+                          path: path.filter(Boolean).join(' → ') || 'ER – Level 5 Non-Urgent',
+                          started_at: sessionStartedAt || undefined,
                         })
+                        if (sessionId) void deleteSession(sessionId)
                         restart()
                       }}
                     >
@@ -1239,12 +1653,13 @@ export default function App() {
                     setScreen(5)
                   }}
                 >
+                  <div className="icon">🛏️</div>
                   <span className="level-badge l1">ADMISSIBLE</span>
                   <h3>Admitted</h3>
                   <p>
                     Manage per ER Protocol → Admission
                     <br />
-                    1. Paying: ACR · 2. Indigent: NBB · 3. Enhanced Special Inpatient Packages
+                    1. Paying: ACR · 2. Indigent: NBB
                   </p>
                 </button>
                 <button
@@ -1255,6 +1670,7 @@ export default function App() {
                     setScreen(5)
                   }}
                 >
+                  <div className="icon">🚑</div>
                   <span className="level-badge l5">NON-ADMISSIBLE</span>
                   <h3>Non-Admissible – OECB</h3>
                   <p>
@@ -1365,17 +1781,17 @@ export default function App() {
           </p>
           <div className="card-grid">
             <button className="choice-card er-card" onClick={() => selectErSub('admissible')}>
+              <div className="icon">🛏️</div>
               <span className="level-badge l1">ADMISSIBLE</span>
               <h3>Admissible</h3>
               <p>
                 1. Paying: ACR
                 <br />
                 2. Indigent: NBB
-                <br />
-                3. Enhanced Special Inpatient Packages
               </p>
             </button>
             <button className="choice-card" onClick={() => selectErSub('non-admissible')}>
+              <div className="icon">🚑</div>
               <span className="level-badge l5">NON-ADMISSIBLE</span>
               <h3>Non-Admissible (OECB)</h3>
               <p>
@@ -2644,14 +3060,14 @@ export default function App() {
           {processStep === 7 && (
             <div className="component-list" style={{ marginBottom: 12 }}>
               <div className="component-card">
-                <div className="comp-icon">📄</div>
+                <div className="comp-icon">💰</div>
                 <div>
                   <h4>Paying: ACR</h4>
                   <p>All Case Rate based on final diagnosis and procedures.</p>
                 </div>
               </div>
               <div className="component-card">
-                <div className="comp-icon">🏥</div>
+                <div className="comp-icon">🪪</div>
                 <div>
                   <h4>Indigent: NBB</h4>
                   <p>No Balance Billing for qualified indigent members in basic accommodation.</p>
@@ -2668,7 +3084,7 @@ export default function App() {
             )
           ) : (
             <button className="btn btn-primary" onClick={goToCoordination}>
-              Continue to Benefit Coordination →
+              🤝 Continue to Benefit Coordination →
             </button>
           )}
         </div>
@@ -4318,23 +4734,32 @@ export default function App() {
           <div className="component-list">
             <button
               type="button"
-              className="component-card"
-              style={{ width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}
+              className="component-card component-card-action"
+              style={{
+                width: '100%',
+                textAlign: 'left',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                border: '2px solid #1348f3',
+              }}
               onClick={() => {
                 setProcessStep(0)
                 setAcrPackage(null)
                 setDetailView('acr-flow')
               }}
             >
-              <div className="comp-icon">📄</div>
+              <div className="comp-icon">💰</div>
               <div>
                 <h4>1. Paying: ACR →</h4>
-                <p>All Case Rate based on final diagnosis and procedures. Click to open ACR flow.</p>
+                <p>
+                  All Case Rate based on final diagnosis and procedures. Tap to open Inpatient ACR
+                  Flow.
+                </p>
               </div>
             </button>
             <button
               type="button"
-              className="component-card"
+              className="component-card component-card-action"
               style={{
                 width: '100%',
                 textAlign: 'left',
@@ -4348,49 +4773,22 @@ export default function App() {
                 setDetailView('nbb-flow')
               }}
             >
-              <div className="comp-icon">🏥</div>
+              <div className="comp-icon">🪪</div>
               <div>
                 <h4>2. Indigent: NBB →</h4>
                 <p>
-                  No Balance Billing for qualified indigent members in basic accommodation. Click to
+                  No Balance Billing for qualified indigent members in basic accommodation. Tap to
                   open Adult NBB Ecosystem.
                 </p>
               </div>
             </button>
-            <div className="component-card">
-              <div className="comp-icon">📦</div>
-              <div>
-                <h4>3. Enhanced Special Inpatient Packages</h4>
-                <p>When applicable after Special Package Screen.</p>
-              </div>
-            </div>
           </div>
           <div className="nav-row">
             <button className="btn btn-outline" onClick={goBack}>
               ← Back
             </button>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                setProcessStep(0)
-                setAcrPackage(null)
-                setDetailView('acr-flow')
-              }}
-            >
-              View Inpatient ACR Flow →
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                setProcessStep(0)
-                setNbbAccom(null)
-                setDetailView('nbb-flow')
-              }}
-            >
-              View NBB Ecosystem →
-            </button>
             <button className="btn btn-primary" onClick={goToCoordination}>
-              Continue to Benefit Coordination →
+              🤝 Continue to Benefit Coordination →
             </button>
           </div>
         </div>
@@ -5305,22 +5703,23 @@ export default function App() {
           steps = [
             ...steps,
             {
-              title: 'Mode of Payment',
-              body: 'No Cardio referral. Select mode of payment.',
+              title: 'Mode of Coverage',
+              body: 'No Cardio referral. Confirm PhilHealth coverage for this rehab session.',
               choosePay: true,
             },
           ]
 
-          if (rehabPay === 'cash') {
+          // Single path: Covered by PhilHealth (HMO path removed)
+          if (rehabPay === 'cash' || rehabPay === 'hmo') {
             steps = [
               ...steps,
               {
-                title: 'Cash',
-                body: 'Cash mode of payment selected.',
+                title: 'Covered by PhilHealth',
+                body: 'Session is covered by PhilHealth.',
               },
               {
-                title: 'Consultation with Rehab Doctor',
-                body: 'Patient consults with the Rehab Doctor.',
+                title: 'Referral to Cardiac Specialist (Consultation)',
+                body: 'Patient is referred to a Cardiac Specialist for consultation.',
               },
               {
                 title: 'Endorse Treatment program to PT on duty',
@@ -5349,8 +5748,8 @@ export default function App() {
                   body: 'Charge the treatment session.',
                 },
                 {
-                  title: 'Payment at the cashier',
-                  body: 'Patient settles payment at the Cashier.',
+                  title: 'Charge to PhilHealth',
+                  body: 'Charge the session to PhilHealth (not patient cash at cashier).',
                 },
                 {
                   title: 'Treatment Procedure',
@@ -5362,105 +5761,10 @@ export default function App() {
                 },
                 {
                   title: 'END',
-                  body: 'Cash Rehab pathway complete for this session.',
+                  body: 'PhilHealth-covered Rehab pathway complete for this session.',
                   end: true,
                 },
               ]
-            }
-          } else if (rehabPay === 'hmo') {
-            steps = [
-              ...steps,
-              {
-                title: 'HMO · Approved LOA',
-                body: 'HMO mode with approved LOA for consultation path.',
-              },
-              {
-                title: 'Consultation with Rehab Doctor',
-                body: 'Patient consults with the Rehab Doctor.',
-              },
-              {
-                title: 'Endorse Treatment program to PT on duty',
-                body: 'Treatment program is endorsed to the Physical Therapist on duty.',
-              },
-              {
-                title: 'Available schedule for Treatment?',
-                body: 'Check if there is an available treatment schedule.',
-                chooseSchedule: true,
-              },
-            ]
-            if (rehabSchedule === 'no') {
-              steps = [
-                ...steps,
-                {
-                  title: 'For Scheduling',
-                  body: 'No available slot. Patient is placed for scheduling.',
-                  end: true,
-                },
-              ]
-            } else if (rehabSchedule === 'yes') {
-              steps = [
-                ...steps,
-                {
-                  title: 'HMO Slip for LOA approval of treatment',
-                  body: 'Prepare HMO slip for LOA approval of the treatment.',
-                },
-                {
-                  title: 'LOA Approval?',
-                  body: 'Confirm if LOA for treatment is approved.',
-                  chooseLoa: true,
-                },
-              ]
-              if (rehabLoa === 'yes') {
-                steps = [
-                  ...steps,
-                  {
-                    title: 'LOA Approved',
-                    body: 'LOA for treatment is approved.',
-                  },
-                  {
-                    title: 'Treatment Procedure',
-                    body: 'Treatment procedure is performed.',
-                  },
-                  {
-                    title: 'Submit LOA at the accounting',
-                    body: 'Submit approved LOA to Accounting.',
-                  },
-                  {
-                    title: 'Patient to return on the next schedule',
-                    body: 'Patient returns on the next scheduled session.',
-                  },
-                  {
-                    title: 'END',
-                    body: 'HMO Rehab pathway complete for this session.',
-                    end: true,
-                  },
-                ]
-              } else if (rehabLoa === 'no') {
-                steps = [
-                  ...steps,
-                  {
-                    title: 'Charge',
-                    body: 'LOA not approved. Charge the session.',
-                  },
-                  {
-                    title: 'Payment at the cashier',
-                    body: 'Patient settles payment at the Cashier.',
-                  },
-                  {
-                    title: 'Treatment Procedure',
-                    body: 'Treatment procedure is performed.',
-                  },
-                  {
-                    title: 'Patient to return on the next schedule',
-                    body: 'Patient returns on the next scheduled session.',
-                  },
-                  {
-                    title: 'END',
-                    body: 'Rehab pathway complete (LOA not approved → cash charge).',
-                    end: true,
-                  },
-                ]
-              }
             }
           }
         }
@@ -5532,35 +5836,38 @@ export default function App() {
                     }}
                   >
                     <h3>No — No Cardio Referral</h3>
-                    <p>Choose HMO or Cash payment path</p>
+                    <p>Covered by PhilHealth path</p>
                   </button>
                 </div>
               )}
 
               {atPay && (
-                <div className="card-grid" style={{ marginBottom: 12 }}>
-                  <button
-                    className="choice-card green-card"
-                    onClick={() => {
-                      setRehabPay('hmo')
-                      setProcessStep(3)
-                      setPath((p) => [...p, 'HMO'])
+                <div style={{ marginBottom: 12 }}>
+                  <div
+                    className="note-box"
+                    style={{
+                      marginBottom: 12,
+                      background: '#fff8e1',
+                      borderColor: '#f9a825',
+                      color: '#5d4037',
                     }}
                   >
-                    <h3>HMO</h3>
-                    <p>Approved LOA path</p>
-                  </button>
-                  <button
-                    className="choice-card"
-                    onClick={() => {
-                      setRehabPay('cash')
-                      setProcessStep(3)
-                      setPath((p) => [...p, 'Cash'])
-                    }}
-                  >
-                    <h3>Cash</h3>
-                    <p>Cash payment path</p>
-                  </button>
+                    <strong>Notice:</strong> Kung hindi natapos ang session / treatment, babayaran ito
+                    ng patient (not covered as a completed PhilHealth session).
+                  </div>
+                  <div className="card-grid">
+                    <button
+                      className="choice-card green-card"
+                      onClick={() => {
+                        setRehabPay('cash')
+                        setProcessStep(3)
+                        setPath((p) => [...p, 'Covered by PhilHealth'])
+                      }}
+                    >
+                      <h3>Covered by PhilHealth</h3>
+                      <p>Charge session to PhilHealth</p>
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -5574,7 +5881,7 @@ export default function App() {
                     }}
                   >
                     <h3>Yes — Schedule available</h3>
-                    <p>Proceed to charge / LOA steps</p>
+                    <p>Proceed to charge to PhilHealth</p>
                   </button>
                   <button
                     className="choice-card"
@@ -6399,8 +6706,8 @@ export default function App() {
   )
 
   return (
-    <div className="container">
-      <header>
+    <div className="app-shell">
+      <header className="app-header">
         <div className="header-top">
           <div className="brand">
             <img
@@ -6412,34 +6719,89 @@ export default function App() {
               <span>Canlubang</span>
             </div>
           </div>
-          <a
-            href="#monitor"
-            className="dash-login-icon-btn"
-            aria-label="Login to Dashboard"
-            title="Login"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="22"
-              height="22"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-            <span className="dash-login-tooltip">Login</span>
-          </a>
+          <div className="header-staff-actions" ref={staffMenuRef}>
+            <div className="staff-profile">
+              <button
+                type="button"
+                className="staff-profile-trigger"
+                onClick={() => setStaffMenuOpen((v) => !v)}
+                aria-expanded={staffMenuOpen}
+                aria-haspopup="menu"
+              >
+                <span className="staff-avatar">S</span>
+                <span className="staff-profile-label">
+                  {staffEmail ? staffEmail.split('@')[0] : 'Staff'}
+                </span>
+                <span className="staff-profile-caret" aria-hidden="true">
+                  ▾
+                </span>
+              </button>
+              {staffMenuOpen && (
+                <>
+                  <div
+                    className="staff-profile-backdrop"
+                    onClick={() => setStaffMenuOpen(false)}
+                    aria-hidden="true"
+                  />
+                  <div className="staff-profile-dropdown" role="menu">
+                    <div className="staff-profile-head">
+                      <span className="staff-avatar staff-avatar-lg">S</span>
+                      <div>
+                        <strong>{staffEmail || 'Staff'}</strong>
+                        <em>Pathway guide</em>
+                      </div>
+                    </div>
+                    {onLogout && (
+                      <button
+                        type="button"
+                        className="staff-profile-item staff-profile-logout"
+                        role="menuitem"
+                        onClick={() => {
+                          setStaffMenuOpen(false)
+                          onLogout()
+                        }}
+                      >
+                        Log out
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
-        <h1>GCare PhilHealth Benefits Utilization Program</h1>
-        <p className="tagline">Global Care Canlubang PhilHealth Ecosystem</p>
       </header>
 
+      <div className="container">
+        <header className="page-title-block">
+          <h1>GCare PhilHealth Benefits Utilization Program</h1>
+          <p className="tagline">Global Care Canlubang PhilHealth Ecosystem</p>
+        </header>
+
       <ProgressDots step={screen} total={6} />
+
+      {sessionId && (
+        <div className="session-active-bar">
+          <div className="session-active-info">
+            <span className="session-active-label">Active patient</span>
+            <strong className="session-active-name">{patientLabel || 'Patient'}</strong>
+          </div>
+          <div className="session-active-actions">
+            <button type="button" className="btn session-park-btn" onClick={parkCurrentSession}>
+              Save &amp; park
+            </button>
+          </div>
+        </div>
+      )}
+
+      {sessionMsg && (
+        <div className="session-toast" role="status">
+          <span>{sessionMsg}</span>
+          <button type="button" className="session-toast-close" onClick={() => setSessionMsg(null)}>
+            ×
+          </button>
+        </div>
+      )}
 
       {screen === 1 && renderScreen1()}
       {screen === 2 && renderScreen2()}
@@ -6449,9 +6811,10 @@ export default function App() {
       {screen === 6 && renderScreen6()}
 
       <div className="footer-bar">
-        <strong>OUR COMMITMENT:</strong> Right Benefit. Right Patient. Right Time.
-        <br />
-        We Care. We Guide. We Serve. · Global Care Medical Center – Canlubang
+          <strong>OUR COMMITMENT:</strong> Right Benefit. Right Patient. Right Time.
+          <br />
+          We Care. We Guide. We Serve. · Global Care Medical Center – Canlubang
+        </div>
       </div>
     </div>
   )

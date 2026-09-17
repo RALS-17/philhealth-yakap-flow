@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GCare PhilHealth Flow</string>
+    <string name="title_activity_main">GCare PhilHealth Flow</string>
+    <string name="package_name">com.gcare.philhealthflow</string>
+    <string name="custom_url_scheme">com.gcare.philhealthflow</string>
+</resources>

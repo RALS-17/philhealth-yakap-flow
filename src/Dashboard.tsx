@@ -1,5 +1,24 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
-import { fetchFlowCompletions, type FlowCompletionRow } from './lib/flowMonitor'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  type FormEvent,
+  type MouseEvent,
+} from 'react'
+import {
+  fetchFlowCompletions,
+  fetchCompletedPatients,
+  type FlowCompletionRow,
+} from './lib/flowMonitor'
+import { changeAdminPassword } from './lib/auth'
+import {
+  listSessions,
+  pathSummary,
+  formatSessionTime,
+  type ParkedSession,
+} from './lib/sessionStore'
 
 const FLOW_COLORS = [
   '#3b82f6',
@@ -47,16 +66,61 @@ function entryLabel(entry: string | null | undefined) {
   return entry
 }
 
-type Props = {
-  onLogout?: () => void
+/** Elapsed time from start until now (or until endIso if provided). */
+function formatDuration(startIso: string, endIso?: string): string {
+  try {
+    const start = new Date(startIso).getTime()
+    const end = endIso ? new Date(endIso).getTime() : Date.now()
+    let ms = Math.max(0, end - start)
+    const days = Math.floor(ms / (24 * 60 * 60 * 1000))
+    ms %= 24 * 60 * 60 * 1000
+    const hours = Math.floor(ms / (60 * 60 * 1000))
+    ms %= 60 * 60 * 1000
+    const mins = Math.floor(ms / (60 * 1000))
+    if (days > 0) return `${days}d ${hours}h ${mins}m`
+    if (hours > 0) return `${hours}h ${mins}m`
+    if (mins > 0) return `${mins}m`
+    return '< 1m'
+  } catch {
+    return '—'
+  }
 }
 
-export default function Dashboard({ onLogout }: Props) {
+function fullPath(snapshot: ParkedSession['snapshot']): string {
+  const p = snapshot.path?.filter(Boolean) ?? []
+  return p.length ? p.join(' → ') : 'Just started'
+}
+
+type AdminPage = 'dashboard' | 'patients'
+
+type Props = {
+  onLogout?: () => void
+  adminEmail?: string
+}
+
+export default function Dashboard({ onLogout, adminEmail }: Props) {
+  const [adminPage, setAdminPage] = useState<AdminPage>('dashboard')
   const [rows, setRows] = useState<FlowCompletionRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [patients, setPatients] = useState<ParkedSession[]>([])
+  const [donePatients, setDonePatients] = useState<FlowCompletionRow[]>([])
+  const [patientsLoading, setPatientsLoading] = useState(false)
+  const [patientsError, setPatientsError] = useState<string | null>(null)
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  const PATIENT_PAGE_SIZE = 5
+  const [progressPage, setProgressPage] = useState(0)
+  const [donePage, setDonePage] = useState(0)
   /** null = All months */
   const [monthCursor, setMonthCursor] = useState<Date | null>(() => startOfMonth(new Date()))
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [profileView, setProfileView] = useState<'menu' | 'settings'>('menu')
+  const [pwCurrent, setPwCurrent] = useState('')
+  const [pwNext, setPwNext] = useState('')
+  const [pwConfirm, setPwConfirm] = useState('')
+  const [pwMsg, setPwMsg] = useState<string | null>(null)
+  const [pwErr, setPwErr] = useState<string | null>(null)
+  const profileRef = useRef<HTMLDivElement>(null)
   const [hoverTip, setHoverTip] = useState<{
     name: string
     count: number
@@ -74,9 +138,64 @@ export default function Dashboard({ onLogout }: Props) {
     setLoading(false)
   }, [])
 
+  const loadPatients = useCallback(async () => {
+    setPatientsLoading(true)
+    setPatientsError(null)
+    try {
+      const [list, done] = await Promise.all([listSessions(), fetchCompletedPatients()])
+      setPatients(list)
+      setDonePatients(done.data)
+      if (done.error) setPatientsError(done.error)
+      setProgressPage(0)
+      setDonePage(0)
+    } catch (e) {
+      setPatientsError(e instanceof Error ? e.message : 'Failed to load patients')
+      setPatients([])
+      setDonePatients([])
+      setProgressPage(0)
+      setDonePage(0)
+    }
+    setPatientsLoading(false)
+  }, [])
+
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (adminPage !== 'patients') return
+    void loadPatients()
+    const tick = window.setInterval(() => setNowTick(Date.now()), 30_000)
+    const refresh = window.setInterval(() => void loadPatients(), 60_000)
+    return () => {
+      window.clearInterval(tick)
+      window.clearInterval(refresh)
+    }
+  }, [adminPage, loadPatients])
+
+  useEffect(() => {
+    if (!profileOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+        setProfileOpen(false)
+        setProfileView('menu')
+        setPwErr(null)
+        setPwMsg(null)
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setProfileOpen(false)
+        setProfileView('menu')
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [profileOpen])
 
   const availableMonths = useMemo(() => {
     const keys = new Set<string>()
@@ -196,26 +315,177 @@ export default function Dashboard({ onLogout }: Props) {
           />
           <strong>GCare PhilHealth Flow</strong>
         </div>
-        <nav className="dash-nav">
-          <a className="dash-nav-active" href="#monitor">
+        <nav className="dash-nav" aria-label="Admin pages">
+          <button
+            type="button"
+            className={adminPage === 'dashboard' ? 'dash-nav-active' : undefined}
+            onClick={() => setAdminPage('dashboard')}
+          >
             Dashboard
-          </a>
-          <a href="#/">Guide App</a>
+          </button>
+          <button
+            type="button"
+            className={adminPage === 'patients' ? 'dash-nav-active' : undefined}
+            onClick={() => setAdminPage('patients')}
+          >
+            Patient List
+          </button>
         </nav>
-        <div className="dash-top-right">
-          {onLogout && (
-            <button type="button" className="dash-logout-btn" onClick={onLogout}>
-              Log out
+        <div className="dash-top-right" ref={profileRef}>
+          <div className="dash-profile">
+            <button
+              type="button"
+              className="dash-profile-trigger"
+              onClick={() => {
+                setProfileOpen((v) => !v)
+                setProfileView('menu')
+                setPwErr(null)
+                setPwMsg(null)
+              }}
+              aria-expanded={profileOpen}
+              aria-haspopup="menu"
+            >
+              <span className="dash-avatar">A</span>
+              <div className="dash-user-meta">
+                <span className="dash-user-name">{adminEmail || 'Admin'}</span>
+                <span className="dash-user-role">ADMIN</span>
+              </div>
+              <span className="dash-profile-caret" aria-hidden="true">
+                ▾
+              </span>
             </button>
-          )}
-          <span className="dash-avatar">G</span>
-          <div className="dash-user-meta">
-            <span className="dash-user-name">Monitor</span>
-            <span className="dash-user-role">ADMIN</span>
+
+            {profileOpen && (
+              <>
+              <div
+                className="dash-profile-backdrop"
+                onClick={() => {
+                  setProfileOpen(false)
+                  setProfileView('menu')
+                }}
+                aria-hidden="true"
+              />
+              <div className="dash-profile-dropdown" role="menu">
+                {profileView === 'menu' ? (
+                  <>
+                    <div className="dash-profile-head">
+                      <span className="dash-avatar dash-avatar-lg">A</span>
+                      <div>
+                        <strong>{adminEmail || 'Admin'}</strong>
+                        <em>Administrator</em>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="dash-profile-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setProfileView('settings')
+                        setPwErr(null)
+                        setPwMsg(null)
+                      }}
+                    >
+                      Profile settings
+                    </button>
+                    {onLogout && (
+                      <button
+                        type="button"
+                        className="dash-profile-item dash-profile-logout"
+                        role="menuitem"
+                        onClick={() => {
+                          setProfileOpen(false)
+                          onLogout()
+                        }}
+                      >
+                        Log out
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <form
+                    className="dash-profile-settings"
+                    onSubmit={(e: FormEvent) => {
+                      e.preventDefault()
+                      setPwMsg(null)
+                      setPwErr(null)
+                      if (pwNext !== pwConfirm) {
+                        setPwErr('New passwords do not match.')
+                        return
+                      }
+                      const result = changeAdminPassword(pwCurrent, pwNext)
+                      if (!result.ok) {
+                        setPwErr(result.error)
+                        return
+                      }
+                      setPwMsg('Password updated on this browser.')
+                      setPwCurrent('')
+                      setPwNext('')
+                      setPwConfirm('')
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="dash-profile-back"
+                      onClick={() => {
+                        setProfileView('menu')
+                        setPwErr(null)
+                        setPwMsg(null)
+                      }}
+                    >
+                      ← Back
+                    </button>
+                    <h3>Profile settings</h3>
+                    <div className="dash-profile-field">
+                      <span>Email</span>
+                      <strong>{adminEmail || 'Admin'}</strong>
+                    </div>
+                    <div className="dash-profile-field">
+                      <span>Role</span>
+                      <strong>Administrator</strong>
+                    </div>
+                    <hr className="dash-profile-sep" />
+                    <p className="dash-profile-section-label">Change password</p>
+                    <input
+                      type="password"
+                      placeholder="Current password"
+                      value={pwCurrent}
+                      onChange={(e) => setPwCurrent(e.target.value)}
+                      required
+                      autoComplete="current-password"
+                    />
+                    <input
+                      type="password"
+                      placeholder="New password (min 8 chars)"
+                      value={pwNext}
+                      onChange={(e) => setPwNext(e.target.value)}
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                    />
+                    <input
+                      type="password"
+                      placeholder="Confirm new password"
+                      value={pwConfirm}
+                      onChange={(e) => setPwConfirm(e.target.value)}
+                      required
+                      minLength={8}
+                      autoComplete="new-password"
+                    />
+                    {pwErr && <div className="dash-login-error">{pwErr}</div>}
+                    {pwMsg && <div className="auth-success-msg">{pwMsg}</div>}
+                    <button type="submit" className="dash-btn-primary dash-profile-save">
+                      Save password
+                    </button>
+                  </form>
+                )}
+              </div>
+              </>
+            )}
           </div>
         </div>
       </header>
 
+      {adminPage === 'dashboard' && (
       <div className="dash-toolbar">
         <div className="dash-toolbar-inner">
           <div className="dash-toolbar-title">
@@ -255,7 +525,31 @@ export default function Dashboard({ onLogout }: Props) {
           </div>
         </div>
       </div>
+      )}
 
+      {adminPage === 'patients' && (
+        <div className="dash-toolbar">
+          <div className="dash-toolbar-inner">
+            <div className="dash-toolbar-title">
+              <h1>Patient List</h1>
+              <p className="dash-period-text">
+                {patients.length} in progress · {donePatients.length} done
+              </p>
+            </div>
+            <div className="dash-toolbar-actions">
+              <button
+                type="button"
+                className="dash-btn-primary"
+                onClick={() => void loadPatients()}
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {adminPage === 'dashboard' && (
       <main className="dash-main">
         {error && (
           <div className="dash-alert">
@@ -492,6 +786,214 @@ export default function Dashboard({ onLogout }: Props) {
           </div>
         )}
       </main>
+      )}
+
+      {adminPage === 'patients' && (() => {
+        const progressTotalPages = Math.max(1, Math.ceil(patients.length / PATIENT_PAGE_SIZE))
+        const doneTotalPages = Math.max(1, Math.ceil(donePatients.length / PATIENT_PAGE_SIZE))
+        const progressSafe = Math.min(progressPage, progressTotalPages - 1)
+        const doneSafe = Math.min(donePage, doneTotalPages - 1)
+        const progressSlice = patients.slice(
+          progressSafe * PATIENT_PAGE_SIZE,
+          progressSafe * PATIENT_PAGE_SIZE + PATIENT_PAGE_SIZE,
+        )
+        const doneSlice = donePatients.slice(
+          doneSafe * PATIENT_PAGE_SIZE,
+          doneSafe * PATIENT_PAGE_SIZE + PATIENT_PAGE_SIZE,
+        )
+        return (
+        <main className="dash-main dash-main-patients">
+          {patientsError && (
+            <div className="dash-alert">
+              <strong>Cannot load patients.</strong> {patientsError}
+            </div>
+          )}
+          {patientsLoading && patients.length === 0 && donePatients.length === 0 ? (
+            <p className="dash-muted dash-loading">Loading patients…</p>
+          ) : patients.length === 0 && donePatients.length === 0 ? (
+            <div className="dash-patient-empty">
+              <p>No patients yet</p>
+              <p className="dash-muted">
+                In-progress sessions appear when staff start or park guidance. Done records appear
+                after a pathway is finished.
+              </p>
+            </div>
+          ) : (
+            <div className="dash-patient-sections">
+              <section className="dash-patient-section">
+                <div className="dash-patient-section-head">
+                  <h2 className="dash-patient-section-title">In progress</h2>
+                  <span className="dash-patient-count">{patients.length}</span>
+                </div>
+                {patients.length === 0 ? (
+                  <p className="dash-patient-empty-line">No active or parked patients right now.</p>
+                ) : (
+                  <>
+                    <div className="dash-patient-table-wrap">
+                      <table className="dash-patient-table">
+                        <thead>
+                          <tr>
+                            <th>Patient</th>
+                            <th>Path</th>
+                            <th>Started</th>
+                            <th>Last activity</th>
+                            <th>In process</th>
+                            <th>Idle</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {progressSlice.map((p) => {
+                            void nowTick
+                            return (
+                              <tr key={p.id}>
+                                <td className="dash-patient-name">{p.label}</td>
+                                <td className="dash-patient-path-cell" title={fullPath(p.snapshot)}>
+                                  {fullPath(p.snapshot)}
+                                </td>
+                                <td className="dash-patient-time">{formatSessionTime(p.createdAt)}</td>
+                                <td className="dash-patient-time">{formatSessionTime(p.updatedAt)}</td>
+                                <td className="dash-patient-duration">{formatDuration(p.createdAt)}</td>
+                                <td className="dash-patient-idle-cell">{formatDuration(p.updatedAt)}</td>
+                                <td>
+                                  <span className="dash-patient-status">In progress</span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                          {Array.from({
+                            length: Math.max(0, PATIENT_PAGE_SIZE - progressSlice.length),
+                          }).map((_, i) => (
+                            <tr key={`prog-empty-${i}`} className="dash-patient-row-empty">
+                              <td colSpan={7}>&nbsp;</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="dash-patient-pager">
+                      <button
+                        type="button"
+                        className="dash-pager-btn"
+                        disabled={progressSafe <= 0}
+                        onClick={() => setProgressPage((x) => Math.max(0, x - 1))}
+                        aria-label="Previous in-progress page"
+                      >
+                        ‹
+                      </button>
+                      <span className="dash-pager-label">
+                        {progressSafe + 1} / {progressTotalPages}
+                      </span>
+                      <button
+                        type="button"
+                        className="dash-pager-btn"
+                        disabled={progressSafe >= progressTotalPages - 1}
+                        onClick={() =>
+                          setProgressPage((x) => Math.min(progressTotalPages - 1, x + 1))
+                        }
+                        aria-label="Next in-progress page"
+                      >
+                        ›
+                      </button>
+                    </div>
+                  </>
+                )}
+              </section>
+
+              <section className="dash-patient-section">
+                <div className="dash-patient-section-head">
+                  <h2 className="dash-patient-section-title">Done</h2>
+                  <span className="dash-patient-count dash-patient-count-done">
+                    {donePatients.length}
+                  </span>
+                </div>
+                {donePatients.length === 0 ? (
+                  <p className="dash-patient-empty-line">
+                    No completed records yet. Finished pathways will show here.
+                  </p>
+                ) : (
+                  <>
+                    <div className="dash-patient-table-wrap">
+                      <table className="dash-patient-table">
+                        <thead>
+                          <tr>
+                            <th>Patient</th>
+                            <th>Path</th>
+                            <th>Started</th>
+                            <th>Finished</th>
+                            <th>Duration</th>
+                            <th>Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {doneSlice.map((r) => {
+                            const startIso = r.started_at || r.created_at
+                            const pathText =
+                              r.path ||
+                              [r.flow_name, r.branch].filter(Boolean).join(' · ') ||
+                              '—'
+                            return (
+                              <tr key={`done-${r.id}`}>
+                                <td className="dash-patient-name">{r.patient_label || 'Patient'}</td>
+                                <td className="dash-patient-path-cell" title={pathText}>
+                                  {pathText}
+                                </td>
+                                <td className="dash-patient-time">
+                                  {r.started_at ? formatSessionTime(r.started_at) : '—'}
+                                </td>
+                                <td className="dash-patient-time">{formatSessionTime(r.created_at)}</td>
+                                <td className="dash-patient-duration">
+                                  {formatDuration(startIso, r.created_at)}
+                                </td>
+                                <td>
+                                  <span className="dash-patient-status dash-patient-status-done">
+                                    Done
+                                  </span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                          {Array.from({
+                            length: Math.max(0, PATIENT_PAGE_SIZE - doneSlice.length),
+                          }).map((_, i) => (
+                            <tr key={`done-empty-${i}`} className="dash-patient-row-empty">
+                              <td colSpan={6}>&nbsp;</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="dash-patient-pager">
+                      <button
+                        type="button"
+                        className="dash-pager-btn"
+                        disabled={doneSafe <= 0}
+                        onClick={() => setDonePage((x) => Math.max(0, x - 1))}
+                        aria-label="Previous done page"
+                      >
+                        ‹
+                      </button>
+                      <span className="dash-pager-label">
+                        {doneSafe + 1} / {doneTotalPages}
+                      </span>
+                      <button
+                        type="button"
+                        className="dash-pager-btn"
+                        disabled={doneSafe >= doneTotalPages - 1}
+                        onClick={() => setDonePage((x) => Math.min(doneTotalPages - 1, x + 1))}
+                        aria-label="Next done page"
+                      >
+                        ›
+                      </button>
+                    </div>
+                  </>
+                )}
+              </section>
+            </div>
+          )}
+        </main>
+        )
+      })()}
     </div>
   )
 }

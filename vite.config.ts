@@ -3,9 +3,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Vercel / custom domain → base '/'
-// GitHub Pages project site → base '/philhealth-yakap-flow/'
+// Vercel, Capacitor/Android, local → base '/'
+// GitHub Pages project site → set GITHUB_PAGES=1
 export default defineConfig({
   plugins: [react()],
-  base: process.env.VERCEL ? '/' : '/philhealth-yakap-flow/',
+  base: process.env.GITHUB_PAGES === '1' ? '/philhealth-yakap-flow/' : '/',
 })

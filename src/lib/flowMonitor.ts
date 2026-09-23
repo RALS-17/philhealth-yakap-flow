@@ -118,19 +118,39 @@ export async function fetchFlowCompletions(
   const { data, error } = await q
 
   if (error) {
-    // Fallback without site_code / patient columns
-    let fb = supabase
+    const msg = error.message || ''
+    // Table missing after accidental DROP
+    if (
+      msg.includes('does not exist') ||
+      msg.includes('schema cache') ||
+      msg.includes('Could not find the table')
+    ) {
+      return {
+        data: [],
+        error:
+          'Table flow_completions is missing. Run supabase-recreate-all.sql in the Supabase SQL Editor.',
+      }
+    }
+
+    // Fallback without site_code / patient columns (older schema)
+    const fallback = await supabase
       .from('flow_completions')
       .select('id, created_at, flow_name, branch, entry_type')
       .order('created_at', { ascending: false })
       .limit(limit)
 
-    const fallback = await fb
     if (fallback.error) {
       return { data: [], error: fallback.error.message }
     }
-    return { data: (fallback.data as FlowCompletionRow[]) || [], error: null }
+
+    let rows = (fallback.data as FlowCompletionRow[]) || []
+    // Client-side site filter only when column existed but select failed for other reasons
+    if (site && rows.length && rows.some((r) => r.site_code != null)) {
+      rows = rows.filter((r) => (r.site_code || '').toLowerCase() === site)
+    }
+    return { data: rows, error: null }
   }
+
   return { data: (data as FlowCompletionRow[]) || [], error: null }
 }
 

@@ -1,9 +1,13 @@
 import { supabase, isSupabaseConfigured } from './supabase'
+import type { SiteCode } from './auth'
 
 export type FlowCompletion = {
   flow_name: string
+  /** Pathway sub-branch (e.g. gamot detail) — not hospital site */
   branch?: string | null
   entry_type?: string | null
+  /** Hospital site code (gcmcc, gcmcl, …) */
+  site_code?: string | null
   /** Admin Patient List only — from now on */
   patient_label?: string | null
   path?: string | null
@@ -18,7 +22,6 @@ export type FlowCompletionRow = FlowCompletion & {
 /**
  * Saves one completed patient-guidance event to Supabase.
  * Safe to call when Supabase is not configured (no-op).
- * Optional patient_label / path / started_at for admin Patient List (Done records).
  */
 export async function saveFlowCompletion(payload: FlowCompletion): Promise<boolean> {
   if (!isSupabaseConfigured() || !supabase) {
@@ -32,6 +35,7 @@ export async function saveFlowCompletion(payload: FlowCompletion): Promise<boole
     flow_name: payload.flow_name,
     branch: payload.branch ?? null,
     entry_type: payload.entry_type ?? null,
+    site_code: payload.site_code ?? null,
   }
 
   if (payload.patient_label != null && payload.patient_label !== '') {
@@ -47,15 +51,26 @@ export async function saveFlowCompletion(payload: FlowCompletion): Promise<boole
   const { error } = await supabase.from('flow_completions').insert([row])
 
   if (error) {
+    // Retry without optional columns if schema not migrated yet
     if (
       error.message?.includes('patient_label') ||
       error.message?.includes('started_at') ||
+      error.message?.includes('site_code') ||
       error.message?.includes('column')
     ) {
-      const basic = {
+      const basic: Record<string, string | null> = {
         flow_name: payload.flow_name,
         branch: payload.branch ?? null,
         entry_type: payload.entry_type ?? null,
+      }
+      if (payload.site_code) {
+        try {
+          const withSite = { ...basic, site_code: payload.site_code }
+          const r2 = await supabase.from('flow_completions').insert([withSite])
+          if (!r2.error) return true
+        } catch {
+          /* fall through */
+        }
       }
       const retry = await supabase.from('flow_completions').insert([basic])
       if (retry.error) {
@@ -63,7 +78,7 @@ export async function saveFlowCompletion(payload: FlowCompletion): Promise<boole
         return false
       }
       console.warn(
-        '[flowMonitor] Saved without patient fields — run supabase-flow-completions-patient.sql',
+        '[flowMonitor] Saved with reduced columns — run supabase-site-code.sql if needed',
       )
       return true
     }
@@ -73,8 +88,11 @@ export async function saveFlowCompletion(payload: FlowCompletion): Promise<boole
   return true
 }
 
-/** Load completions for the dashboard (newest first). */
-export async function fetchFlowCompletions(limit = 2000): Promise<{
+/** Load completions for the dashboard (newest first), optional hospital filter. */
+export async function fetchFlowCompletions(
+  limit = 2000,
+  siteCode?: SiteCode | string | null,
+): Promise<{
   data: FlowCompletionRow[]
   error: string | null
 }> {
@@ -85,18 +103,29 @@ export async function fetchFlowCompletions(limit = 2000): Promise<{
     }
   }
 
-  const { data, error } = await supabase
+  const site = siteCode?.toLowerCase() || null
+
+  let q = supabase
     .from('flow_completions')
-    .select('id, created_at, flow_name, branch, entry_type, patient_label, path, started_at')
+    .select('id, created_at, flow_name, branch, entry_type, site_code, patient_label, path, started_at')
     .order('created_at', { ascending: false })
     .limit(limit)
 
+  if (site) {
+    q = q.eq('site_code', site)
+  }
+
+  const { data, error } = await q
+
   if (error) {
-    const fallback = await supabase
+    // Fallback without site_code / patient columns
+    let fb = supabase
       .from('flow_completions')
       .select('id, created_at, flow_name, branch, entry_type')
       .order('created_at', { ascending: false })
       .limit(limit)
+
+    const fallback = await fb
     if (fallback.error) {
       return { data: [], error: fallback.error.message }
     }
@@ -107,9 +136,11 @@ export async function fetchFlowCompletions(limit = 2000): Promise<{
 
 /**
  * Completed guidance records that have a patient label (admin Patient List — Done).
- * From now on only (rows saved after migration + app update).
  */
-export async function fetchCompletedPatients(limit = 500): Promise<{
+export async function fetchCompletedPatients(
+  limit = 500,
+  siteCode?: SiteCode | string | null,
+): Promise<{
   data: FlowCompletionRow[]
   error: string | null
 }> {
@@ -117,12 +148,20 @@ export async function fetchCompletedPatients(limit = 500): Promise<{
     return { data: [], error: null }
   }
 
-  const { data, error } = await supabase
+  const site = siteCode?.toLowerCase() || null
+
+  let q = supabase
     .from('flow_completions')
-    .select('id, created_at, flow_name, branch, entry_type, patient_label, path, started_at')
+    .select('id, created_at, flow_name, branch, entry_type, site_code, patient_label, path, started_at')
     .not('patient_label', 'is', null)
     .order('created_at', { ascending: false })
     .limit(limit)
+
+  if (site) {
+    q = q.eq('site_code', site)
+  }
+
+  const { data, error } = await q
 
   if (error) {
     if (error.message?.includes('patient_label') || error.message?.includes('column')) {

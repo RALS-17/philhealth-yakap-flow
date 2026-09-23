@@ -28,65 +28,70 @@ function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) {
   }
 
   return (
-    <div className="dash-login-root">
-      <form className="dash-login-card auth-login-card" onSubmit={submit}>
-        <img
-          src={`${import.meta.env.BASE_URL}global-care-logo.svg`}
-          alt="Global Care"
-          width={48}
-          height={48}
-        />
-        <h1>GCare PhilHealth</h1>
-        <p>Sign in to continue</p>
+    <div className="auth-shell">
+      <div className="auth-shell-bg" aria-hidden="true" />
+      <form className="auth-card" onSubmit={submit}>
+        <div className="auth-card-logo">
+          <img
+            src={`${import.meta.env.BASE_URL}global-care-logo.svg`}
+            alt="Global Care"
+            width={52}
+            height={52}
+          />
+        </div>
+        <h1 className="auth-card-title">Welcome back</h1>
+        <p className="auth-card-sub">Sign in to GCare PhilHealth Benefits</p>
 
-        <label htmlFor="auth-email">Email</label>
-        <input
-          id="auth-email"
-          type="email"
-          autoComplete="username"
-          value={email}
-          onChange={(e) => {
-            setEmail(e.target.value)
-            setError(null)
-          }}
-          placeholder="you@email.com"
-          autoFocus
-          required
-        />
-
-        <label htmlFor="auth-pass">Password</label>
-        <div className="auth-pass-wrap">
+        <div className="auth-field">
+          <label htmlFor="auth-email">Email</label>
           <input
-            id="auth-pass"
-            type={showPass ? 'text' : 'password'}
-            autoComplete="current-password"
-            value={password}
+            id="auth-email"
+            type="email"
+            autoComplete="username"
+            value={email}
             onChange={(e) => {
-              setPassword(e.target.value)
+              setEmail(e.target.value)
               setError(null)
             }}
-            placeholder="Enter password"
+            placeholder="you@branch.com"
+            autoFocus
             required
           />
-          <button
-            type="button"
-            className="auth-show-pass"
-            onClick={() => setShowPass((v) => !v)}
-            tabIndex={-1}
-          >
-            {showPass ? 'Hide' : 'Show'}
-          </button>
         </div>
 
-        {error && <div className="dash-login-error">{error}</div>}
+        <div className="auth-field">
+          <label htmlFor="auth-pass">Password</label>
+          <div className="auth-pass-wrap">
+            <input
+              id="auth-pass"
+              type={showPass ? 'text' : 'password'}
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value)
+                setError(null)
+              }}
+              placeholder="••••••••"
+              required
+            />
+            <button
+              type="button"
+              className="auth-show-pass"
+              onClick={() => setShowPass((v) => !v)}
+              tabIndex={-1}
+            >
+              {showPass ? 'Hide' : 'Show'}
+            </button>
+          </div>
+        </div>
 
-        <button type="submit" className="dash-btn-primary">
+        {error && <div className="auth-error">{error}</div>}
+
+        <button type="submit" className="auth-submit">
           Sign in
         </button>
 
-        <p className="auth-hint">
-          Staff → Pathways guide · Admin → Dashboard
-        </p>
+        <p className="auth-footer-hint">Staff opens pathways · Admin opens dashboard</p>
       </form>
     </div>
   )
@@ -97,7 +102,6 @@ function Root() {
 
   useEffect(() => {
     if (!user) return
-    // Route by role
     if (user.role === 'admin') {
       if (window.location.hash.replace(/^#\/?/, '') !== 'monitor') {
         window.location.hash = '#monitor'
@@ -128,11 +132,25 @@ function Root() {
 
   if (user.role === 'admin') {
     return (
-      <Dashboard onLogout={handleLogout} adminEmail={user.email} />
+      <Dashboard
+        onLogout={handleLogout}
+        adminEmail={user.email}
+        siteCode={user.siteCode}
+        siteName={user.siteName}
+        siteLocation={user.siteLocation}
+      />
     )
   }
 
-  return <App onLogout={handleLogout} staffEmail={user.email} />
+  return (
+    <App
+      onLogout={handleLogout}
+      staffEmail={user.email}
+      siteCode={user.siteCode}
+      siteName={user.siteName}
+      siteLocation={user.siteLocation}
+    />
+  )
 }
 
 createRoot(document.getElementById('root')!).render(

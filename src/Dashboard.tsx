@@ -96,9 +96,18 @@ type AdminPage = 'dashboard' | 'patients'
 type Props = {
   onLogout?: () => void
   adminEmail?: string
+  siteCode?: string
+  siteName?: string
+  siteLocation?: string
 }
 
-export default function Dashboard({ onLogout, adminEmail }: Props) {
+export default function Dashboard({
+  onLogout,
+  adminEmail,
+  siteCode = 'gcmcc',
+  siteName = 'Global Care Canlubang',
+  siteLocation = 'Canlubang',
+}: Props) {
   const [adminPage, setAdminPage] = useState<AdminPage>('dashboard')
   const [rows, setRows] = useState<FlowCompletionRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -132,17 +141,17 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const res = await fetchFlowCompletions()
+    const res = await fetchFlowCompletions(2000, siteCode)
     setRows(res.data)
     setError(res.error)
     setLoading(false)
-  }, [])
+  }, [siteCode])
 
   const loadPatients = useCallback(async () => {
     setPatientsLoading(true)
     setPatientsError(null)
     try {
-      const [list, done] = await Promise.all([listSessions(), fetchCompletedPatients()])
+      const [list, done] = await Promise.all([listSessions(siteCode), fetchCompletedPatients(500, siteCode)])
       setPatients(list)
       setDonePatients(done.data)
       if (done.error) setPatientsError(done.error)
@@ -156,7 +165,7 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
       setDonePage(0)
     }
     setPatientsLoading(false)
-  }, [])
+  }, [siteCode])
 
   useEffect(() => {
     void load()
@@ -292,6 +301,45 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
     monthCursor === null ? 'all time' : isCurrentMonth ? 'this month' : 'selected month'
 
   const pathwaySlots = Array.from({ length: PATHWAY_SLOTS }, (_, i) => byFlow[i] ?? null)
+
+  /** Last 12 calendar months (all data, for trend card) */
+  const monthlyTrend = useMemo(() => {
+    const now = new Date()
+    const months: { key: string; label: string; count: number }[] = []
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const label = d.toLocaleDateString('en-US', { month: 'short' })
+      months.push({ key, label, count: 0 })
+    }
+    const map = new Map(months.map((m) => [m.key, m]))
+    rows.forEach((r) => {
+      const d = new Date(r.created_at)
+      if (Number.isNaN(d.getTime())) return
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const slot = map.get(key)
+      if (slot) slot.count += 1
+    })
+    return months
+  }, [rows])
+
+  const maxMonth = Math.max(1, ...monthlyTrend.map((m) => m.count))
+  const maxEntry = Math.max(1, ...(byEntry.map((e) => e.count) || [1]))
+
+  /** Share of top 5 pathways for stacked bar */
+  const pathwayShare = useMemo(() => {
+    const top = byFlow.slice(0, 5)
+    const rest = byFlow.slice(5)
+    const restCount = rest.reduce((s, f) => s + f.count, 0)
+    const items = restCount > 0 ? [...top, { name: 'Others', count: restCount }] : top
+    const sum = items.reduce((s, f) => s + f.count, 0) || 1
+    return items.map((f, i) => ({
+      ...f,
+      pct: (f.count / sum) * 100,
+      color: FLOW_COLORS[i % FLOW_COLORS.length],
+    }))
+  }, [byFlow])
+
   const entryA = byEntry[0] ?? null
   const entryB = byEntry[1] ?? null
   const entryRest = byEntry.slice(2)
@@ -313,7 +361,7 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
             width={28}
             height={28}
           />
-          <strong>GCare PhilHealth Flow</strong>
+          <strong>GLOBAL CARE · {siteLocation}</strong>
         </div>
         <nav className="dash-nav" aria-label="Admin pages">
           <button
@@ -412,7 +460,7 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
                         setPwErr('New passwords do not match.')
                         return
                       }
-                      const result = changeAdminPassword(pwCurrent, pwNext)
+                      const result = changeAdminPassword(pwCurrent, pwNext, siteCode as import('./lib/auth').SiteCode)
                       if (!result.ok) {
                         setPwErr(result.error)
                         return
@@ -558,36 +606,122 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
         )}
 
         {loading && rows.length === 0 ? (
-          <p className="dash-muted dash-loading">Loading…</p>
+          <div className="dash-content dash-skeleton" aria-busy="true" aria-label="Loading dashboard">
+            <section className="dash-kpi-grid">
+              {[0, 1, 2, 3].map((i) => (
+                <article key={i} className="dash-kpi sk-card">
+                  <div className="dash-kpi-body">
+                    <span className="sk-line sk-line-sm" />
+                    <span className="sk-line sk-line-lg" />
+                    <span className="sk-line sk-line-md" />
+                  </div>
+                  <span className="dash-kpi-accent sk-accent" aria-hidden="true" />
+                </article>
+              ))}
+            </section>
+            <section className="dash-board-grid">
+              <div className="dash-board-col">
+                <article className="dash-card sk-card">
+                  <span className="sk-line sk-line-title" />
+                  <div className="sk-donut-row">
+                    <span className="sk-circle" />
+                    <div className="sk-lines">
+                      <span className="sk-line" />
+                      <span className="sk-line" />
+                      <span className="sk-line sk-line-md" />
+                    </div>
+                  </div>
+                </article>
+                <article className="dash-card sk-card">
+                  <span className="sk-line sk-line-title" />
+                  <div className="sk-bars-row">
+                    {[0, 1, 2, 3].map((i) => (
+                      <span key={i} className="sk-bar" style={{ height: `${40 + i * 12}%` }} />
+                    ))}
+                  </div>
+                </article>
+              </div>
+              <div className="dash-board-col dash-board-col-center">
+                <article className="dash-card dash-card-entry sk-card">
+                  <span className="sk-line sk-line-title" />
+                  <div className="dash-priority-grid sk-priority">
+                    <span className="sk-spot" />
+                    <span className="sk-spot" />
+                    <span className="sk-spot sk-spot-wide" />
+                  </div>
+                </article>
+                <article className="dash-card dash-card-share sk-card">
+                  <span className="sk-line sk-line-title" />
+                  <span className="sk-stack" />
+                  <div className="sk-lines sk-lines-h">
+                    <span className="sk-line sk-line-sm" />
+                    <span className="sk-line sk-line-sm" />
+                    <span className="sk-line sk-line-sm" />
+                  </div>
+                </article>
+              </div>
+              <div className="dash-board-col">
+                <article className="dash-card sk-card">
+                  <span className="sk-line sk-line-title" />
+                  <div className="sk-lines sk-lines-list">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <span key={i} className="sk-list-row">
+                        <span className="sk-line sk-line-md" />
+                        <span className="sk-track" />
+                      </span>
+                    ))}
+                  </div>
+                </article>
+                <article className="dash-card sk-card">
+                  <span className="sk-line sk-line-title" />
+                  <span className="sk-line sk-line-sm" />
+                  <span className="sk-chart" />
+                </article>
+              </div>
+            </section>
+          </div>
         ) : (
           <div className={`dash-content${loading ? ' dash-content-refreshing' : ''}`}>
             <section className="dash-kpi-grid" aria-label="Key metrics">
               <article className="dash-kpi dash-kpi-purple dash-card-hover" title="Total guided patients">
-                <span className="dash-kpi-label">Total guided</span>
-                <strong className="dash-kpi-value">{total}</strong>
-                <span className="dash-kpi-sub">{periodSub}</span>
+                <div className="dash-kpi-body">
+                  <span className="dash-kpi-label">Total guided</span>
+                  <strong className="dash-kpi-value">{total}</strong>
+                  <span className="dash-kpi-sub">{periodSub}</span>
+                </div>
+                <span className="dash-kpi-accent" aria-hidden="true" />
               </article>
               <article className="dash-kpi dash-kpi-blue dash-card-hover" title="Completed today">
-                <span className="dash-kpi-label">Today</span>
-                <strong className="dash-kpi-value">{todayCount}</strong>
-                <span className="dash-kpi-sub">completed today</span>
+                <div className="dash-kpi-body">
+                  <span className="dash-kpi-label">Today</span>
+                  <strong className="dash-kpi-value">{todayCount}</strong>
+                  <span className="dash-kpi-sub">completed today</span>
+                </div>
+                <span className="dash-kpi-accent" aria-hidden="true" />
               </article>
               <article className="dash-kpi dash-kpi-peach dash-card-hover" title="Pathways used">
-                <span className="dash-kpi-label">Pathways used</span>
-                <strong className="dash-kpi-value">{uniqueFlows}</strong>
-                <span className="dash-kpi-sub">different flows</span>
+                <div className="dash-kpi-body">
+                  <span className="dash-kpi-label">Pathways used</span>
+                  <strong className="dash-kpi-value">{uniqueFlows}</strong>
+                  <span className="dash-kpi-sub">different flows</span>
+                </div>
+                <span className="dash-kpi-accent" aria-hidden="true" />
               </article>
               <article className="dash-kpi dash-kpi-mint dash-card-hover" title="Top pathway">
-                <span className="dash-kpi-label">Top pathway</span>
-                <strong className="dash-kpi-value">{topFlow ? topFlow.count : 0}</strong>
-                <span className="dash-kpi-sub dash-kpi-sub-ellipsis">
-                  {topFlow ? topFlow.name : 'No data yet'}
-                </span>
+                <div className="dash-kpi-body">
+                  <span className="dash-kpi-label">Top pathway</span>
+                  <strong className="dash-kpi-value">{topFlow ? topFlow.count : 0}</strong>
+                  <span className="dash-kpi-sub dash-kpi-sub-ellipsis">
+                    {topFlow ? topFlow.name : 'No data yet'}
+                  </span>
+                </div>
+                <span className="dash-kpi-accent" aria-hidden="true" />
               </article>
             </section>
 
-            <section className="dash-mid-grid">
-              <article className="dash-card dash-card-hover">
+            <section className="dash-board-grid" aria-label="Dashboard panels">
+              <div className="dash-board-col">
+                <article className="dash-card dash-card-hover">
                 <h2>Pathway breakdown</h2>
                 <div className="dash-donut-solo">
                   {total === 0 ? (
@@ -614,7 +748,6 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
                           const cx = 60
                           const cy = 60
                           const toRad = (deg: number) => (deg * Math.PI) / 180
-                          // Normalize sweeps so they always total exactly 360°
                           const raw = donutSegments.map((s) => Math.max(s.pct, 0))
                           const sum = raw.reduce((a, b) => a + b, 0) || 1
                           const sweeps = raw.map((p) => (p / sum) * 360)
@@ -647,7 +780,6 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
                               })
                             }
                             if (sweep >= 359.9) {
-                              // Full ring via two circles (outer fill + inner hole drawn separately)
                               return (
                                 <circle
                                   key={s.name}
@@ -663,7 +795,6 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
                                 />
                               )
                             }
-                            // True donut slice: outer arc → inner arc reverse
                             const d = [
                               `M ${x1o} ${y1o}`,
                               `A ${outerR} ${outerR} 0 ${large} 1 ${x2o} ${y2o}`,
@@ -684,22 +815,10 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
                           })
                         })()}
                         <circle cx="60" cy="60" r="30" fill="#fff" pointerEvents="none" />
-                        <text
-                          x="60"
-                          y="57"
-                          textAnchor="middle"
-                          className="dash-svg-total"
-                          pointerEvents="none"
-                        >
+                        <text x="60" y="57" textAnchor="middle" className="dash-svg-total" pointerEvents="none">
                           {total}
                         </text>
-                        <text
-                          x="60"
-                          y="72"
-                          textAnchor="middle"
-                          className="dash-svg-label"
-                          pointerEvents="none"
-                        >
+                        <text x="60" y="72" textAnchor="middle" className="dash-svg-label" pointerEvents="none">
                           flows
                         </text>
                       </svg>
@@ -708,10 +827,7 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
                           className="dash-float-tip"
                           style={{ left: hoverTip.x + 12, top: hoverTip.y - 8 }}
                         >
-                          <span
-                            className="dash-float-tip-dot"
-                            style={{ background: hoverTip.color }}
-                          />
+                          <span className="dash-float-tip-dot" style={{ background: hoverTip.color }} />
                           <div>
                             <strong>{hoverTip.name}</strong>
                             <em>
@@ -722,11 +838,39 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
                       )}
                     </div>
                   )}
-                  <p className="dash-donut-hint">Hover a segment for name & value</p>
+                  <ul className="dash-donut-legend" aria-label="Pathway legend">
+                    {donutSegments.map((s) => (
+                      <li key={s.name}>
+                        <span className="dash-legend-dot" style={{ background: s.color }} />
+                        <span className="dash-legend-name">{s.name}</span>
+                        <strong className="dash-legend-count">{s.count}</strong>
+                        <em className="dash-legend-pct">{Math.round(s.pct)}%</em>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </article>
-
-              <article className="dash-card dash-card-hover" title="Entry spotlight">
+                <article className="dash-card dash-card-hover">
+                <h2>By entry type</h2>
+                <p className="dash-card-sub">Guided patients by how they arrived</p>
+                <div className="dash-cat-bars">
+                  {(byEntry.length ? byEntry : [{ name: 'No data', count: 0 }]).slice(0, 6).map((e) => (
+                    <div key={e.name} className="dash-cat-col" title={`${e.name}: ${e.count}`}>
+                      <strong className="dash-cat-val">{e.count}</strong>
+                      <div className="dash-cat-track">
+                        <div
+                          className="dash-cat-fill"
+                          style={{ height: `${Math.max(6, (e.count / maxEntry) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="dash-cat-label">{e.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </article>
+              </div>
+              <div className="dash-board-col dash-board-col-center">
+                <article className="dash-card dash-card-hover dash-card-entry" title="Entry spotlight">
                 <h2>Entry spotlight</h2>
                 <div className="dash-priority-grid">
                   <div
@@ -734,34 +878,68 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
                     title={entryA ? `${entryA.name}: ${entryA.count}` : 'No data'}
                   >
                     <strong>{entryA?.count ?? 0}</strong>
-                    <span>{entryA?.name ?? '—'}</span>
+                    <span>{entryA ? entryA.name : 'Top entry'}</span>
                   </div>
                   <div
                     className={`dash-spot dash-spot-high${entryB ? '' : ' dash-spot-empty'}`}
                     title={entryB ? `${entryB.name}: ${entryB.count}` : 'No data'}
                   >
                     <strong>{entryB?.count ?? 0}</strong>
-                    <span>{entryB?.name ?? '—'}</span>
+                    <span>{entryB ? entryB.name : '2nd entry'}</span>
                   </div>
                   <div
                     className={`dash-spot dash-spot-mid${entryRest.length ? '' : ' dash-spot-empty'}`}
                     title={entryRest.length ? `${entryRestLabel}: ${entryRestCount}` : 'No data'}
                   >
                     <strong>{entryRestCount}</strong>
-                    <span>{entryRestLabel}</span>
+                    <span>
+                      {entryRest.length
+                        ? entryRest.length === 1
+                          ? entryRest[0].name
+                          : 'Other entries'
+                        : 'Other entries'}
+                    </span>
                   </div>
                 </div>
               </article>
-
-              <article className="dash-card dash-card-hover" title="Top pathways">
+                <article className="dash-card dash-card-hover dash-card-share">
+                <h2>Pathway share</h2>
+                <p className="dash-card-sub">Top pathways in this period</p>
+                <div className="dash-stack-wrap">
+                  <div className="dash-stack-bar" role="img" aria-label="Pathway share">
+                    {total === 0 ? (
+                      <div className="dash-stack-empty" />
+                    ) : (
+                      pathwayShare.map((s) => (
+                        <div
+                          key={s.name}
+                          className="dash-stack-seg"
+                          style={{ width: `${Math.max(s.pct, 2)}%`, background: s.color }}
+                          title={`${s.name}: ${s.count} (${Math.round(s.pct)}%)`}
+                        />
+                      ))
+                    )}
+                  </div>
+                  <ul className="dash-stack-legend">
+                    {pathwayShare.map((s) => (
+                      <li key={s.name}>
+                        <span className="dash-legend-dot" style={{ background: s.color }} />
+                        <span>{s.name}</span>
+                      </li>
+                    ))}
+                    {pathwayShare.length === 0 && <li className="dash-muted">No data yet</li>}
+                  </ul>
+                </div>
+              </article>
+              </div>
+              <div className="dash-board-col">
+                <article className="dash-card dash-card-hover" title="Top pathways">
                 <h2>Top pathways</h2>
                 <ul className="dash-assigned">
                   {pathwaySlots.map((f, i) =>
                     f ? (
                       <li key={f.name} title={`${f.name}: ${f.count}`}>
-                        <span className="dash-assigned-name">
-                          {f.name}
-                        </span>
+                        <span className="dash-assigned-name">{f.name}</span>
                         <div className="dash-bar-track">
                           <div
                             className="dash-bar-fill"
@@ -782,8 +960,50 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
                   )}
                 </ul>
               </article>
+                <article className="dash-card dash-card-hover">
+                <h2>12-month guided</h2>
+                <p className="dash-card-sub">Total patients guided per month</p>
+                <div className="dash-trend">
+                  <svg className="dash-trend-svg" viewBox="0 0 240 90" preserveAspectRatio="none">
+                    {(() => {
+                      const w = 240
+                      const h = 90
+                      const padX = 8
+                      const padY = 12
+                      const pts = monthlyTrend.map((m, i) => {
+                        const x = padX + (i * (w - padX * 2)) / Math.max(monthlyTrend.length - 1, 1)
+                        const y = h - padY - (m.count / maxMonth) * (h - padY * 2)
+                        return { x, y, ...m }
+                      })
+                      const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+                      const area = `${line} L ${pts[pts.length - 1]?.x ?? 0} ${h - padY} L ${pts[0]?.x ?? 0} ${h - padY} Z`
+                      return (
+                        <>
+                          <path d={area} className="dash-trend-area" />
+                          <path d={line} className="dash-trend-line" fill="none" />
+                          {pts.map((p) => (
+                            <circle key={p.key} cx={p.x} cy={p.y} r="3" className="dash-trend-dot">
+                              <title>{`${p.label}: ${p.count}`}</title>
+                            </circle>
+                          ))}
+                        </>
+                      )
+                    })()}
+                  </svg>
+                  <div className="dash-trend-labels">
+                    {monthlyTrend.map((m, i) =>
+                      i % 2 === 0 || i === monthlyTrend.length - 1 ? (
+                        <span key={m.key}>{m.label}</span>
+                      ) : (
+                        <span key={m.key} />
+                      ),
+                    )}
+                  </div>
+                </div>
+              </article>
+              </div>
             </section>
-          </div>
+</div>
         )}
       </main>
       )}
@@ -809,7 +1029,27 @@ export default function Dashboard({ onLogout, adminEmail }: Props) {
             </div>
           )}
           {patientsLoading && patients.length === 0 && donePatients.length === 0 ? (
-            <p className="dash-muted dash-loading">Loading patients…</p>
+            <div className="dash-patient-sections dash-skeleton" aria-busy="true" aria-label="Loading patients">
+              {[0, 1].map((sec) => (
+                <section key={sec} className="dash-patient-section">
+                  <div className="dash-patient-section-head">
+                    <span className="sk-line sk-line-title" />
+                    <span className="sk-line sk-line-sm sk-badge" />
+                  </div>
+                  <div className="dash-patient-table-wrap sk-table">
+                    {[0, 1, 2, 3, 4].map((row) => (
+                      <div key={row} className="sk-table-row">
+                        <span className="sk-line" />
+                        <span className="sk-line sk-line-md" />
+                        <span className="sk-line sk-line-sm" />
+                        <span className="sk-line sk-line-sm" />
+                        <span className="sk-line sk-line-sm" />
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
           ) : patients.length === 0 && donePatients.length === 0 ? (
             <div className="dash-patient-empty">
               <p>No patients yet</p>

@@ -1,13 +1,14 @@
 /**
  * Park/resume patient guidance sessions.
- * Primary: Supabase `flow_sessions` (shared across devices).
+ * Primary: Supabase `flow_sessions` (shared across devices, filtered by hospital site).
  * Fallback: localStorage when Supabase is not configured or offline.
  * No PhilHealth numbers — label only.
  */
 
 import { supabase, isSupabaseConfigured } from './supabase'
+import type { SiteCode } from './auth'
 
-export const SESSION_STORE_KEY = 'gcare-flow-sessions-v1'
+export const SESSION_STORE_KEY = 'gcare-flow-sessions-v2'
 export const MAX_SESSIONS = 40
 /** Auto-remove parked sessions older than this (ms). Default 48 hours. */
 export const SESSION_MAX_AGE_MS = 48 * 60 * 60 * 1000
@@ -96,6 +97,8 @@ export type ParkedSession = {
   id: string
   label: string
   note?: string
+  /** Hospital site code — sessions are isolated per branch */
+  siteCode: SiteCode | string
   createdAt: string
   updatedAt: string
   snapshot: FlowSnapshot
@@ -105,6 +108,7 @@ type DbRow = {
   id: string
   label: string
   note: string | null
+  site_code?: string | null
   snapshot: FlowSnapshot
   created_at: string
   updated_at: string
@@ -136,7 +140,7 @@ function prune(sessions: ParkedSession[]): ParkedSession[] {
   })
   return fresh
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    .slice(0, MAX_SESSIONS)
+    .slice(0, MAX_SESSIONS * 5) // keep more when multi-site in one browser
 }
 
 function readLocal(): ParkedSession[] {
@@ -158,6 +162,7 @@ function rowToSession(row: DbRow): ParkedSession {
     id: row.id,
     label: row.label,
     note: row.note ?? undefined,
+    siteCode: (row.site_code as SiteCode) || 'gcmcc',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     snapshot: row.snapshot,
@@ -184,103 +189,165 @@ export function createSessionId(): string {
 }
 
 /**
- * Load sessions from Supabase when configured; otherwise localStorage.
- * Always refreshes local cache from remote when remote succeeds.
+ * Load sessions for one hospital site.
  */
-export async function listSessions(): Promise<ParkedSession[]> {
+export async function listSessions(siteCode?: SiteCode | string): Promise<ParkedSession[]> {
+  const site = siteCode?.toLowerCase()
+
   if (isSupabaseConfigured() && supabase) {
     try {
       const cutoff = new Date(Date.now() - SESSION_MAX_AGE_MS).toISOString()
-      const { data, error } = await supabase
+      let q = supabase
         .from('flow_sessions')
-        .select('id, label, note, snapshot, created_at, updated_at')
+        .select('id, label, note, site_code, snapshot, created_at, updated_at')
         .gte('updated_at', cutoff)
         .order('updated_at', { ascending: false })
         .limit(MAX_SESSIONS)
 
+      if (site) {
+        q = q.eq('site_code', site)
+      }
+
+      const { data, error } = await q
+
       if (error) {
+        // column missing — fall back without filter
+        if (error.message?.includes('site_code') || error.message?.includes('column')) {
+          const fb = await supabase
+            .from('flow_sessions')
+            .select('id, label, note, snapshot, created_at, updated_at')
+            .gte('updated_at', cutoff)
+            .order('updated_at', { ascending: false })
+            .limit(MAX_SESSIONS)
+          if (fb.error) {
+            console.error('[sessionStore] listSessions remote error', fb.error.message)
+            return filterLocal(site)
+          }
+          const sessions = ((fb.data as DbRow[]) || []).map(rowToSession)
+          return site ? sessions.filter((s) => !s.siteCode || s.siteCode === site) : sessions
+        }
         console.error('[sessionStore] listSessions remote error', error.message)
-        return readLocal()
+        return filterLocal(site)
       }
 
       const sessions = ((data as DbRow[]) || []).map(rowToSession)
-      writeLocal(sessions)
+      // merge into local cache for this site
+      const others = readLocal().filter((s) => site && s.siteCode && s.siteCode !== site)
+      writeLocal([...sessions, ...others])
       return sessions
     } catch (err) {
       console.error('[sessionStore] listSessions failed', err)
-      return readLocal()
+      return filterLocal(site)
     }
   }
-  return readLocal()
+  return filterLocal(site)
 }
 
-export async function getSession(id: string): Promise<ParkedSession | null> {
+function filterLocal(site?: string): ParkedSession[] {
+  const all = readLocal()
+  if (!site) return all
+  return all.filter((s) => !s.siteCode || s.siteCode === site)
+}
+
+export async function getSession(
+  id: string,
+  siteCode?: SiteCode | string,
+): Promise<ParkedSession | null> {
+  const site = siteCode?.toLowerCase()
+
   if (isSupabaseConfigured() && supabase) {
     try {
       const { data, error } = await supabase
         .from('flow_sessions')
-        .select('id, label, note, snapshot, created_at, updated_at')
+        .select('id, label, note, site_code, snapshot, created_at, updated_at')
         .eq('id', id)
         .maybeSingle()
 
       if (error) {
+        if (error.message?.includes('site_code') || error.message?.includes('column')) {
+          const fb = await supabase
+            .from('flow_sessions')
+            .select('id, label, note, snapshot, created_at, updated_at')
+            .eq('id', id)
+            .maybeSingle()
+          if (fb.error || !fb.data) {
+            return filterLocal(site).find((s) => s.id === id) ?? null
+          }
+          return rowToSession(fb.data as DbRow)
+        }
         console.error('[sessionStore] getSession remote error', error.message)
-        return readLocal().find((s) => s.id === id) ?? null
+        return filterLocal(site).find((s) => s.id === id) ?? null
       }
       if (!data) return null
       const session = rowToSession(data as DbRow)
+      if (site && session.siteCode && session.siteCode !== site) return null
       cacheUpsertLocal(session)
       return session
     } catch (err) {
       console.error('[sessionStore] getSession failed', err)
-      return readLocal().find((s) => s.id === id) ?? null
+      return filterLocal(site).find((s) => s.id === id) ?? null
     }
   }
-  return readLocal().find((s) => s.id === id) ?? null
+  return filterLocal(site).find((s) => s.id === id) ?? null
 }
 
-/** Insert or update a session (remote + local cache). */
+/** Insert or update a session (remote + local cache), tagged with hospital site. */
 export async function upsertSession(
   id: string,
   label: string,
   snapshot: FlowSnapshot,
+  siteCode: SiteCode | string,
   note?: string,
 ): Promise<ParkedSession> {
   const now = new Date().toISOString()
+  const site = (siteCode || 'gcmcc').toLowerCase()
   const localExisting = readLocal().find((s) => s.id === id)
   const next: ParkedSession = {
     id,
     label: label.trim() || 'Patient',
     note,
+    siteCode: site,
     createdAt: localExisting?.createdAt ?? now,
     updatedAt: now,
     snapshot,
   }
 
-  // Always update local cache first (fast + offline-safe)
   cacheUpsertLocal(next)
 
   if (isSupabaseConfigured() && supabase) {
     try {
+      const payload: Record<string, unknown> = {
+        id: next.id,
+        label: next.label,
+        note: next.note ?? null,
+        site_code: site,
+        snapshot: next.snapshot,
+        updated_at: now,
+        created_at: next.createdAt,
+      }
+
       const { data, error } = await supabase
         .from('flow_sessions')
-        .upsert(
-          {
+        .upsert(payload, { onConflict: 'id' })
+        .select('id, label, note, site_code, snapshot, created_at, updated_at')
+        .maybeSingle()
+
+      if (error) {
+        if (error.message?.includes('site_code') || error.message?.includes('column')) {
+          const basic = {
             id: next.id,
             label: next.label,
             note: next.note ?? null,
             snapshot: next.snapshot,
             updated_at: now,
-            // created_at only on insert — Supabase keeps existing if we omit on conflict
-            // but upsert needs full row; use created_at from next
             created_at: next.createdAt,
-          },
-          { onConflict: 'id' },
-        )
-        .select('id, label, note, snapshot, created_at, updated_at')
-        .maybeSingle()
-
-      if (error) {
+          }
+          const retry = await supabase.from('flow_sessions').upsert(basic, { onConflict: 'id' })
+          if (retry.error) {
+            console.error('[sessionStore] upsertSession remote error', retry.error.message)
+          }
+          return next
+        }
         console.error('[sessionStore] upsertSession remote error', error.message)
         return next
       }
@@ -332,30 +399,3 @@ export function formatSessionTime(iso: string): string {
     return ''
   }
 }
-
-/**
- * SQL to run once in Supabase SQL editor:
- *
- * create table if not exists public.flow_sessions (
- *   id uuid primary key,
- *   label text not null,
- *   note text,
- *   snapshot jsonb not null default '{}'::jsonb,
- *   created_at timestamptz not null default now(),
- *   updated_at timestamptz not null default now()
- * );
- *
- * create index if not exists flow_sessions_updated_at_idx
- *   on public.flow_sessions (updated_at desc);
- *
- * alter table public.flow_sessions enable row level security;
- *
- * create policy "Allow anon read flow_sessions"
- *   on public.flow_sessions for select to anon using (true);
- * create policy "Allow anon insert flow_sessions"
- *   on public.flow_sessions for insert to anon with check (true);
- * create policy "Allow anon update flow_sessions"
- *   on public.flow_sessions for update to anon using (true) with check (true);
- * create policy "Allow anon delete flow_sessions"
- *   on public.flow_sessions for delete to anon using (true);
- */

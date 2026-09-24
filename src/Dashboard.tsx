@@ -575,6 +575,22 @@ export default function Dashboard({
       </div>
       )}
 
+      {hoverTip && (
+        <div
+          className="dash-float-tip dash-float-tip-fixed"
+          style={{ left: hoverTip.x + 14, top: hoverTip.y + 14 }}
+        >
+          <span className="dash-float-tip-dot" style={{ background: hoverTip.color }} />
+          <div>
+            <strong>{hoverTip.name}</strong>
+            <em>
+              {hoverTip.count}
+              {hoverTip.pct > 0 ? ` · ${Math.round(hoverTip.pct)}%` : ''}
+            </em>
+          </div>
+        </div>
+      )}
+
       {adminPage === 'patients' && (
         <div className="dash-toolbar">
           <div className="dash-toolbar-inner">
@@ -767,16 +783,13 @@ export default function Dashboard({
                             const x2i = cx + innerR * Math.cos(toRad(start))
                             const y2i = cy + innerR * Math.sin(toRad(start))
                             const showTip = (e: MouseEvent<SVGElement>) => {
-                              const rect = (
-                                e.currentTarget.ownerSVGElement as SVGSVGElement
-                              ).getBoundingClientRect()
                               setHoverTip({
                                 name: s.name,
                                 count: s.count,
                                 pct: s.pct,
                                 color: s.color,
-                                x: e.clientX - rect.left,
-                                y: e.clientY - rect.top,
+                                x: e.clientX,
+                                y: e.clientY,
                               })
                             }
                             if (sweep >= 359.9) {
@@ -822,29 +835,38 @@ export default function Dashboard({
                           flows
                         </text>
                       </svg>
-                      {hoverTip && (
-                        <div
-                          className="dash-float-tip"
-                          style={{ left: hoverTip.x + 12, top: hoverTip.y - 8 }}
-                        >
-                          <span className="dash-float-tip-dot" style={{ background: hoverTip.color }} />
-                          <div>
-                            <strong>{hoverTip.name}</strong>
-                            <em>
-                              {hoverTip.count} · {Math.round(hoverTip.pct)}%
-                            </em>
-                          </div>
-                        </div>
-                      )}
+
                     </div>
                   )}
-                  <ul className="dash-donut-legend" aria-label="Pathway legend">
-                    {donutSegments.map((s) => (
-                      <li key={s.name}>
-                        <span className="dash-legend-dot" style={{ background: s.color }} />
-                        <span className="dash-legend-name">{s.name}</span>
-                        <strong className="dash-legend-count">{s.count}</strong>
-                        <em className="dash-legend-pct">{Math.round(s.pct)}%</em>
+                  <ul className="dash-donut-legend" aria-label="Pathway legend" onMouseLeave={() => setHoverTip(null)}>
+                    {donutSegments.map((seg) => (
+                      <li
+                        key={seg.name}
+                        onMouseEnter={(ev) =>
+                          setHoverTip({
+                            name: seg.name,
+                            count: seg.count,
+                            pct: seg.pct,
+                            color: seg.color,
+                            x: ev.clientX,
+                            y: ev.clientY,
+                          })
+                        }
+                        onMouseMove={(ev) =>
+                          setHoverTip({
+                            name: seg.name,
+                            count: seg.count,
+                            pct: seg.pct,
+                            color: seg.color,
+                            x: ev.clientX,
+                            y: ev.clientY,
+                          })
+                        }
+                      >
+                        <span className="dash-legend-dot" style={{ background: seg.color }} />
+                        <span className="dash-legend-name">{seg.name}</span>
+                        <strong className="dash-legend-count">{seg.count}</strong>
+                        <em className="dash-legend-pct">{Math.round(seg.pct)}%</em>
                       </li>
                     ))}
                   </ul>
@@ -853,9 +875,25 @@ export default function Dashboard({
                 <article className="dash-card dash-card-hover">
                 <h2>By entry type</h2>
                 <p className="dash-card-sub">Guided patients by how they arrived</p>
-                <div className="dash-cat-bars">
-                  {(byEntry.length ? byEntry : [{ name: 'No data', count: 0 }]).slice(0, 6).map((e) => (
-                    <div key={e.name} className="dash-cat-col" title={`${e.name}: ${e.count}`}>
+                <div className="dash-cat-bars" onMouseLeave={() => setHoverTip(null)}>
+                  {(byEntry.length ? byEntry : [{ name: 'No data', count: 0 }]).slice(0, 6).map((e) => {
+                    const pct = total > 0 ? (e.count / total) * 100 : 0
+                    const show = (ev: MouseEvent<HTMLDivElement>) =>
+                      setHoverTip({
+                        name: e.name,
+                        count: e.count,
+                        pct,
+                        color: '#7c3aed',
+                        x: ev.clientX,
+                        y: ev.clientY,
+                      })
+                    return (
+                    <div
+                      key={e.name}
+                      className="dash-cat-col"
+                      onMouseEnter={show}
+                      onMouseMove={show}
+                    >
                       <strong className="dash-cat-val">{e.count}</strong>
                       <div className="dash-cat-track">
                         <div
@@ -865,7 +903,8 @@ export default function Dashboard({
                       </div>
                       <span className="dash-cat-label">{e.name}</span>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </article>
               </div>
@@ -875,21 +914,87 @@ export default function Dashboard({
                 <div className="dash-priority-grid">
                   <div
                     className={`dash-spot dash-spot-urgent${entryA ? '' : ' dash-spot-empty'}`}
-                    title={entryA ? `${entryA.name}: ${entryA.count}` : 'No data'}
+                    onMouseEnter={(ev) =>
+                      entryA &&
+                      setHoverTip({
+                        name: entryA.name,
+                        count: entryA.count,
+                        pct: total > 0 ? (entryA.count / total) * 100 : 0,
+                        color: '#dc2626',
+                        x: ev.clientX,
+                        y: ev.clientY,
+                      })
+                    }
+                    onMouseMove={(ev) =>
+                      entryA &&
+                      setHoverTip({
+                        name: entryA.name,
+                        count: entryA.count,
+                        pct: total > 0 ? (entryA.count / total) * 100 : 0,
+                        color: '#dc2626',
+                        x: ev.clientX,
+                        y: ev.clientY,
+                      })
+                    }
+                    onMouseLeave={() => setHoverTip(null)}
                   >
                     <strong>{entryA?.count ?? 0}</strong>
                     <span>{entryA ? entryA.name : 'Top entry'}</span>
                   </div>
                   <div
                     className={`dash-spot dash-spot-high${entryB ? '' : ' dash-spot-empty'}`}
-                    title={entryB ? `${entryB.name}: ${entryB.count}` : 'No data'}
+                    onMouseEnter={(ev) =>
+                      entryB &&
+                      setHoverTip({
+                        name: entryB.name,
+                        count: entryB.count,
+                        pct: total > 0 ? (entryB.count / total) * 100 : 0,
+                        color: '#ea580c',
+                        x: ev.clientX,
+                        y: ev.clientY,
+                      })
+                    }
+                    onMouseMove={(ev) =>
+                      entryB &&
+                      setHoverTip({
+                        name: entryB.name,
+                        count: entryB.count,
+                        pct: total > 0 ? (entryB.count / total) * 100 : 0,
+                        color: '#ea580c',
+                        x: ev.clientX,
+                        y: ev.clientY,
+                      })
+                    }
+                    onMouseLeave={() => setHoverTip(null)}
                   >
                     <strong>{entryB?.count ?? 0}</strong>
                     <span>{entryB ? entryB.name : '2nd entry'}</span>
                   </div>
                   <div
                     className={`dash-spot dash-spot-mid${entryRest.length ? '' : ' dash-spot-empty'}`}
-                    title={entryRest.length ? `${entryRestLabel}: ${entryRestCount}` : 'No data'}
+                    onMouseEnter={(ev) =>
+                      entryRest.length > 0 &&
+                      setHoverTip({
+                        name: entryRestLabel,
+                        count: entryRestCount,
+                        pct: total > 0 ? (entryRestCount / total) * 100 : 0,
+                        color: '#2563eb',
+                        x: ev.clientX,
+                        y: ev.clientY,
+                      })
+                    }
+                    onMouseMove={(ev) =>
+                      entryRest.length > 0 &&
+                      setHoverTip({
+                        name: entryRestLabel,
+                        count: entryRestCount,
+                        pct: total > 0 ? (entryRestCount / total) * 100 : 0,
+                        color: '#2563eb',
+                        x: ev.clientX,
+                        y: ev.clientY,
+                      })
+                    }
+                    onMouseLeave={() => setHoverTip(null)}
                   >
                     <strong>{entryRestCount}</strong>
                     <span>
@@ -910,14 +1015,27 @@ export default function Dashboard({
                     {total === 0 ? (
                       <div className="dash-stack-empty" />
                     ) : (
-                      pathwayShare.map((s) => (
+                      pathwayShare.map((s) => {
+                        const show = (ev: MouseEvent<HTMLDivElement>) =>
+                          setHoverTip({
+                            name: s.name,
+                            count: s.count,
+                            pct: s.pct,
+                            color: s.color,
+                            x: ev.clientX,
+                            y: ev.clientY,
+                          })
+                        return (
                         <div
                           key={s.name}
                           className="dash-stack-seg"
                           style={{ width: `${Math.max(s.pct, 2)}%`, background: s.color }}
-                          title={`${s.name}: ${s.count} (${Math.round(s.pct)}%)`}
+                          onMouseEnter={show}
+                          onMouseMove={show}
+                          onMouseLeave={() => setHoverTip(null)}
                         />
-                      ))
+                        )
+                      })
                     )}
                   </div>
                   <ul className="dash-stack-legend">
@@ -938,7 +1056,30 @@ export default function Dashboard({
                 <ul className="dash-assigned">
                   {pathwaySlots.map((f, i) =>
                     f ? (
-                      <li key={f.name} title={`${f.name}: ${f.count}`}>
+                      <li
+                        key={f.name}
+                        onMouseEnter={(ev) =>
+                          setHoverTip({
+                            name: f.name,
+                            count: f.count,
+                            pct: total > 0 ? (f.count / total) * 100 : 0,
+                            color: '#7c3aed',
+                            x: ev.clientX,
+                            y: ev.clientY,
+                          })
+                        }
+                        onMouseMove={(ev) =>
+                          setHoverTip({
+                            name: f.name,
+                            count: f.count,
+                            pct: total > 0 ? (f.count / total) * 100 : 0,
+                            color: '#7c3aed',
+                            x: ev.clientX,
+                            y: ev.clientY,
+                          })
+                        }
+                        onMouseLeave={() => setHoverTip(null)}
+                      >
                         <span className="dash-assigned-name">{f.name}</span>
                         <div className="dash-bar-track">
                           <div
@@ -981,11 +1122,29 @@ export default function Dashboard({
                         <>
                           <path d={area} className="dash-trend-area" />
                           <path d={line} className="dash-trend-line" fill="none" />
-                          {pts.map((p) => (
-                            <circle key={p.key} cx={p.x} cy={p.y} r="3" className="dash-trend-dot">
-                              <title>{`${p.label}: ${p.count}`}</title>
-                            </circle>
-                          ))}
+                          {pts.map((p) => {
+                            const show = (ev: MouseEvent<SVGCircleElement>) =>
+                              setHoverTip({
+                                name: p.label,
+                                count: p.count,
+                                pct: 0,
+                                color: '#7c3aed',
+                                x: ev.clientX,
+                                y: ev.clientY,
+                              })
+                            return (
+                            <circle
+                              key={p.key}
+                              cx={p.x}
+                              cy={p.y}
+                              r="5"
+                              className="dash-trend-dot"
+                              onMouseEnter={show}
+                              onMouseMove={show}
+                              onMouseLeave={() => setHoverTip(null)}
+                            />
+                            )
+                          })}
                         </>
                       )
                     })()}

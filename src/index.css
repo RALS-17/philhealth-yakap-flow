@@ -2297,7 +2297,15 @@ h1 {
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.25);
   font-size: 0.78rem;
   white-space: nowrap;
-  max-width: 240px;
+  max-width: 280px;
+}
+
+.dash-float-tip-fixed {
+  position: fixed !important;
+  z-index: 9999 !important;
+  pointer-events: none;
+  white-space: normal;
+  max-width: min(280px, calc(100vw - 24px));
 }
 
 .dash-float-tip-dot {
@@ -2311,9 +2319,10 @@ h1 {
   display: block;
   font-weight: 700;
   font-size: 0.8rem;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.25;
+  overflow: visible;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .dash-float-tip em {
@@ -2323,6 +2332,21 @@ h1 {
   color: #cbd5e1;
   font-size: 0.72rem;
   margin-top: 2px;
+}
+
+.dash-slice {
+  cursor: pointer;
+}
+.dash-cat-col,
+.dash-stack-seg,
+.dash-assigned li,
+.dash-donut-legend li,
+.dash-spot {
+  cursor: pointer;
+}
+.dash-trend-dot {
+  cursor: pointer;
+  fill: #7c3aed;
 }
 
 .dash-slot-empty {

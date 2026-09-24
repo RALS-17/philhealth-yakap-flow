@@ -2030,7 +2030,7 @@ h1 {
   justify-content: space-between;
   gap: 12px;
   cursor: default;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .dash-kpi-body {
@@ -2113,14 +2113,14 @@ h1 {
   min-height: 0;
   overflow: hidden;
   cursor: default;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .dash-card-hover:hover,
 .dash-kpi.dash-card-hover:hover {
   border-color: #d0d7e6;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
-  transform: translateY(-1px);
+  transform: none;
 }
 
 .dash-card h2 {
@@ -2347,10 +2347,12 @@ h1 {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 4px;
   text-align: center;
-  min-height: 0;
+  min-height: 56px;
   border: 1px solid transparent;
+  overflow: visible;
+  box-sizing: border-box;
 }
 
 .dash-spot strong {
@@ -2362,6 +2364,9 @@ h1 {
 .dash-spot span {
   font-size: 0.78rem;
   font-weight: 600;
+  line-height: 1.25;
+  white-space: normal;
+  overflow: visible;
 }
 
 .dash-spot-urgent {
@@ -2404,9 +2409,11 @@ h1 {
   font-size: 0.8rem;
   font-weight: 700;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.25;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .dash-spot-urgent {
@@ -2550,6 +2557,20 @@ h1 {
   }
   .dash-priority-grid {
     grid-template-rows: auto auto;
+    height: auto;
+  }
+  /* entry-spot tablet labels */
+  .dash-spot {
+    min-height: 68px !important;
+    padding: 12px 10px !important;
+    overflow: visible !important;
+  }
+  .dash-spot span {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: unset !important;
+    font-size: 0.82rem !important;
+    line-height: 1.3 !important;
   }
   .dash-topbar {
     overflow: visible;
@@ -3784,10 +3805,22 @@ h1 {
   gap: 4px !important;
   min-height: 0 !important;
   height: 100% !important;
+  overflow: visible !important;
 }
 
 .dash-spot strong {
   font-size: 1.85rem !important;
+  flex-shrink: 0 !important;
+}
+
+/* Keep entry labels readable (do not ellipsis-clip on tablet) */
+.dash-spot span {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: unset !important;
+  line-height: 1.25 !important;
+  max-width: 100% !important;
+  flex-shrink: 0 !important;
 }
 
 .dash-spot-mid {

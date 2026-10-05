@@ -57,8 +57,8 @@ const PROGRAMS: ProgramDef[] = [
         body: 'Perform the second case rate check after primary package selection.',
       },
       {
-        title: 'CF2 / CF4 / CF5 / eSOA',
-        body: 'Complete required claim forms: CF2 / CF4 / CF5 / eSOA as applicable.',
+        title: 'PBEF / CF2 / CF4 / CF5 / eSOA',
+        body: 'Complete required claim forms: PBEF / CF2 / CF4 / CF5 / eSOA as applicable.',
       },
       {
         title: 'Benefit Deduction',
@@ -193,8 +193,8 @@ const PROGRAMS: ProgramDef[] = [
         body: 'Match the clinical case to the specific Z package criteria and documentation list.',
       },
       {
-        title: '3. PhilHealth / Coordinator Screening',
-        body: 'PhilHealth / Z-Benefit Coordinator screens eligibility and completeness of requirements.',
+        title: '3. Onco Doctor Screening (ZBEN)',
+        body: 'Oncology doctor screens the case to determine if the patient qualifies (pasok) for Z-Benefit (ZBEN).',
       },
       {
         title: '4. Check Clinical Criteria',
@@ -299,11 +299,11 @@ const PROGRAMS: ProgramDef[] = [
     steps: [
       {
         title: 'Day Surgery pathway selected',
-        body: 'Select the day-surgery / procedure track (e.g. Woundcare, Endoscopy, HSG, or other same-day procedure with PhilHealth case rate).',
+        body: 'Select the day-surgery / procedure track (e.g. Woundcare, Endoscopy, HSG, or other same-day procedure with PhilHealth case rate). Note: Patient must already bring the ORDER from the doctor (dapat dala na ang doctor’s order).',
       },
       {
         title: 'PHIC Coordinator Screening',
-        body: 'PhilHealth Coordinator screens eligibility and maps the procedure to the applicable case rate / package.',
+        body: 'PhilHealth Coordinator screens eligibility.',
       },
       {
         title: 'Pre-procedure requirements',

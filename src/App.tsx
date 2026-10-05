@@ -218,7 +218,19 @@ function ProgressDots({ step, total = 6 }: { step: number; total?: number }) {
   )
 }
 
-export default function App({ onLogout, staffEmail }: { onLogout?: () => void; staffEmail?: string } = {}) {
+export default function App({
+  onLogout,
+  staffEmail,
+  siteCode = 'gcmcc',
+  siteName = 'Global Care Canlubang',
+  siteLocation = 'Canlubang',
+}: {
+  onLogout?: () => void
+  staffEmail?: string
+  siteCode?: string
+  siteName?: string
+  siteLocation?: string
+} = {}) {
   const [screen, setScreen] = useState<Screen>(1)
   const [path, setPath] = useState<string[]>(['Start'])
   const [entryType, setEntryType] = useState<EntryType>(null)
@@ -300,7 +312,7 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
     let cancelled = false
     ;(async () => {
       setSessionsLoading(true)
-      const rows = await listSessions()
+      const rows = await listSessions(siteCode)
       if (!cancelled) {
         setParkedList(rows)
         setSessionsLoading(false)
@@ -841,6 +853,7 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
         flow_name: meta.flow_name,
         branch: meta.branch,
         entry_type: entryType,
+        site_code: siteCode,
         patient_label: patientLabel || 'Patient',
         path: pathStr || meta.flow_name,
         started_at: sessionStartedAt || undefined,
@@ -1026,7 +1039,7 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
   }
 
   const refreshParkedList = async () => {
-    const rows = await listSessions()
+    const rows = await listSessions(siteCode)
     setParkedList(rows)
   }
 
@@ -1094,7 +1107,7 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
       rehabSchedule: null,
       rehabLoa: null,
     }
-    void upsertSession(id, label, emptySnap).then(() => refreshParkedList())
+    void upsertSession(id, label, emptySnap, siteCode).then(() => refreshParkedList())
     setTimeout(() => {
       skipAutoSave.current = false
     }, 0)
@@ -1108,7 +1121,7 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
     const id = sessionId
     const label = patientLabel || 'Patient'
     const snap = getSnapshot()
-    void upsertSession(id, label, snap).then(() => refreshParkedList())
+    void upsertSession(id, label, snap, siteCode).then(() => refreshParkedList())
     setSessionMsg(`Paused and saved “${label}”. You can resume on any device.`)
     setSessionId(null)
     setPatientLabel('')
@@ -1118,9 +1131,9 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
 
   const resumeSession = (id: string) => {
     void (async () => {
-      const row = await getSession(id)
+      const row = await getSession(id, siteCode)
       if (!row) {
-        setSessionMsg('That paused patient was not found.')
+        setSessionMsg('That saved patient was not found.')
         await refreshParkedList()
         return
       }
@@ -1133,7 +1146,7 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
   }
 
   const discardSession = (id: string, label: string) => {
-    if (!window.confirm(`Remove paused patient “${label}”? This cannot be undone.`)) return
+    if (!window.confirm(`Remove saved patient “${label}”? This cannot be undone.`)) return
     void deleteSession(id).then(() => refreshParkedList())
     if (sessionId === id) {
       setSessionId(null)
@@ -1149,7 +1162,7 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
     if (!sessionId || skipAutoSave.current) return
     const t = window.setTimeout(() => {
       if (skipAutoSave.current) return
-      void upsertSession(sessionId, patientLabel || 'Patient', getSnapshot()).then(() =>
+      void upsertSession(sessionId, patientLabel || 'Patient', getSnapshot(), siteCode).then(() =>
         refreshParkedList(),
       )
     }, 500)
@@ -1301,7 +1314,7 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
         <div className="screen">
           <div className="section-title">Patient queue</div>
           <p className="section-desc">
-            Start a new patient or resume someone you paused and saved while assisting another.
+            Start a new patient or resume someone you saved while assisting another.
           </p>
 
           <div className="session-hub-card">
@@ -1331,45 +1344,80 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
             </p>
           </div>
 
-          <div className="session-parked-block">
+          <div className="session-parked-block session-parked-flat">
             <h3 className="session-hub-heading">
-              Paused patients
+              Saved patients
               {parkedList.length > 0 && (
                 <span className="session-count-badge">{parkedList.length}</span>
               )}
             </h3>
             {sessionsLoading ? (
-              <p className="session-empty">Loading paused patients…</p>
-            ) : parkedList.length === 0 ? (
-              <p className="session-empty">
-                No paused patients. Progress is shared across devices when connected.
-              </p>
-            ) : (
-              <ul className="session-list">
-                {parkedList.map((s) => (
-                  <li key={s.id} className="session-list-item">
-                    <button
-                      type="button"
-                      className="session-resume-btn"
-                      onClick={() => resumeSession(s.id)}
-                    >
-                      <span className="session-item-name">{s.label}</span>
-                      <span className="session-item-path">{pathSummary(s.snapshot)}</span>
-                      <span className="session-item-time">
-                        Saved {formatSessionTime(s.updatedAt)}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="session-discard-btn"
-                      onClick={() => discardSession(s.id, s.label)}
-                      aria-label={`Remove ${s.label}`}
-                    >
-                      Remove
-                    </button>
+              <ul className="session-list session-list-skeleton" aria-busy="true" aria-label="Loading saved patients">
+                {[0, 1, 2].map((i) => (
+                  <li key={i} className="session-list-item sk-session-item">
+                    <div className="session-resume-btn sk-session-btn">
+                      <span className="sk-line sk-line-md" />
+                      <span className="sk-line sk-line-sm" />
+                      <span className="sk-line sk-line-sm" />
+                    </div>
+                    <span className="sk-session-remove" />
                   </li>
                 ))}
               </ul>
+            ) : parkedList.length === 0 ? (
+              <p className="session-empty">
+                No saved patients. Progress is shared across devices when connected.
+              </p>
+            ) : (
+              <div className="staff-patient-table-wrap">
+                <table className="staff-patient-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th className="staff-patient-actions-col">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parkedList.map((s) => (
+                      <tr
+                        key={s.id}
+                        className="staff-patient-row"
+                        onClick={() => resumeSession(s.id)}
+                        title={`Resume ${s.label}`}
+                      >
+                        <td className="staff-patient-name-cell">
+                          <span className="staff-patient-name">{s.label}</span>
+                          <span className="staff-patient-meta">
+                            {pathSummary(s.snapshot)} · Saved {formatSessionTime(s.updatedAt)}
+                          </span>
+                        </td>
+                        <td className="staff-patient-actions-cell">
+                          <button
+                            type="button"
+                            className="staff-patient-edit"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              resumeSession(s.id)
+                            }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="staff-patient-delete"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              discardSession(s.id, s.label)
+                            }}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>
@@ -1556,6 +1604,7 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
                           flow_name: 'ER – Level 5 Non-Urgent',
                           branch: 'Managed in ER → Discharge',
                           entry_type: entryType,
+        site_code: siteCode,
                           patient_label: patientLabel || 'Patient',
                           path: path.filter(Boolean).join(' → ') || 'ER – Level 5 Non-Urgent',
                           started_at: sessionStartedAt || undefined,
@@ -6716,7 +6765,7 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
             />
             <div className="brand-text">
               <strong>GLOBAL CARE</strong>
-              <span>Canlubang</span>
+              <span>{siteLocation}</span>
             </div>
           </div>
           <div className="header-staff-actions" ref={staffMenuRef}>
@@ -6775,7 +6824,7 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
       <div className="container">
         <header className="page-title-block">
           <h1>GCare PhilHealth Benefits Utilization Program</h1>
-          <p className="tagline">Global Care Canlubang PhilHealth Ecosystem</p>
+          <p className="tagline">{siteName} · PhilHealth Ecosystem</p>
         </header>
 
       <ProgressDots step={screen} total={6} />
@@ -6813,7 +6862,7 @@ export default function App({ onLogout, staffEmail }: { onLogout?: () => void; s
       <div className="footer-bar">
           <strong>OUR COMMITMENT:</strong> Right Benefit. Right Patient. Right Time.
           <br />
-          We Care. We Guide. We Serve. · Global Care Medical Center – Canlubang
+          We Care. We Guide. We Serve. · {siteName}
         </div>
       </div>
     </div>

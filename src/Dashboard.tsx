@@ -118,7 +118,12 @@ export default function Dashboard({
   const [patientsError, setPatientsError] = useState<string | null>(null)
   const [nowTick, setNowTick] = useState(() => Date.now())
   const PATIENT_PAGE_SIZE = 5
+  const LIST_BATCH = 15
   const [progressPage, setProgressPage] = useState(0)
+  const [patientListTab, setPatientListTab] = useState<'ongoing' | 'done'>('ongoing')
+  const [visibleOngoing, setVisibleOngoing] = useState(15)
+  const [visibleDone, setVisibleDone] = useState(15)
+  const tableScrollRef = useRef<HTMLDivElement>(null)
   const [donePage, setDonePage] = useState(0)
   /** null = All months */
   const [monthCursor, setMonthCursor] = useState<Date | null>(() => startOfMonth(new Date()))
@@ -350,6 +355,22 @@ export default function Dashboard({
       : entryRest.length === 1
         ? entryRest[0].name
         : `${entryRest.length} others`
+
+  useEffect(() => {
+    setVisibleOngoing(LIST_BATCH)
+    setVisibleDone(LIST_BATCH)
+  }, [patientListTab, patients.length, donePatients.length])
+
+  const onTableScroll = () => {
+    const el = tableScrollRef.current
+    if (!el) return
+    if (el.scrollTop + el.clientHeight < el.scrollHeight - 80) return
+    if (patientListTab === 'ongoing') {
+      setVisibleOngoing((n) => Math.min(n + LIST_BATCH, patients.length))
+    } else {
+      setVisibleDone((n) => Math.min(n + LIST_BATCH, donePatients.length))
+    }
+  }
 
   return (
     <div className="dash-root">
@@ -597,7 +618,9 @@ export default function Dashboard({
             <div className="dash-toolbar-title">
               <h1>Patient List</h1>
               <p className="dash-period-text">
-                {patients.length} in progress · {donePatients.length} done
+                {patientListTab === 'ongoing'
+                  ? `${patients.length} ongoing`
+                  : `${donePatients.length} completed`}
               </p>
             </div>
             <div className="dash-toolbar-actions">
@@ -1218,17 +1241,48 @@ export default function Dashboard({
               </p>
             </div>
           ) : (
+            <>
+            <div className="dash-patient-tabs" role="tablist" aria-label="Patient status">
+              <button
+                type="button"
+                role="tab"
+                className={patientListTab === 'ongoing' ? 'dash-patient-tab dash-patient-tab-active' : 'dash-patient-tab'}
+                aria-selected={patientListTab === 'ongoing'}
+                onClick={() => {
+                  setPatientListTab('ongoing')
+                  setProgressPage(0)
+                }}
+              >
+                Ongoing
+                <span className="dash-patient-tab-count">{patients.length}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className={patientListTab === 'done' ? 'dash-patient-tab dash-patient-tab-active' : 'dash-patient-tab'}
+                aria-selected={patientListTab === 'done'}
+                onClick={() => {
+                  setPatientListTab('done')
+                  setDonePage(0)
+                }}
+              >
+                Done
+                <span className="dash-patient-tab-count">{donePatients.length}</span>
+              </button>
+            </div>
+
             <div className="dash-patient-sections">
+              {patientListTab === 'ongoing' && (
               <section className="dash-patient-section">
-                <div className="dash-patient-section-head">
-                  <h2 className="dash-patient-section-title">In progress</h2>
-                  <span className="dash-patient-count">{patients.length}</span>
-                </div>
                 {patients.length === 0 ? (
                   <p className="dash-patient-empty-line">No active or parked patients right now.</p>
                 ) : (
                   <>
-                    <div className="dash-patient-table-wrap">
+                    <div
+                      className="dash-patient-table-wrap"
+                      ref={tableScrollRef}
+                      onScroll={onTableScroll}
+                    >
                       <table className="dash-patient-table">
                         <thead>
                           <tr>
@@ -1242,7 +1296,7 @@ export default function Dashboard({
                           </tr>
                         </thead>
                         <tbody>
-                          {progressSlice.map((p) => {
+                          {patients.slice(0, visibleOngoing).map((p) => {
                             void nowTick
                             return (
                               <tr key={p.id}>
@@ -1255,64 +1309,35 @@ export default function Dashboard({
                                 <td className="dash-patient-duration">{formatDuration(p.createdAt)}</td>
                                 <td className="dash-patient-idle-cell">{formatDuration(p.updatedAt)}</td>
                                 <td>
-                                  <span className="dash-patient-status">In progress</span>
+                                  <span className="dash-patient-status">Ongoing</span>
                                 </td>
                               </tr>
                             )
                           })}
-                          {Array.from({
-                            length: Math.max(0, PATIENT_PAGE_SIZE - progressSlice.length),
-                          }).map((_, i) => (
-                            <tr key={`prog-empty-${i}`} className="dash-patient-row-empty">
-                              <td colSpan={7}>&nbsp;</td>
-                            </tr>
-                          ))}
                         </tbody>
                       </table>
-                    </div>
-                    <div className="dash-patient-pager">
-                      <button
-                        type="button"
-                        className="dash-pager-btn"
-                        disabled={progressSafe <= 0}
-                        onClick={() => setProgressPage((x) => Math.max(0, x - 1))}
-                        aria-label="Previous in-progress page"
-                      >
-                        ‹
-                      </button>
-                      <span className="dash-pager-label">
-                        {progressSafe + 1} / {progressTotalPages}
-                      </span>
-                      <button
-                        type="button"
-                        className="dash-pager-btn"
-                        disabled={progressSafe >= progressTotalPages - 1}
-                        onClick={() =>
-                          setProgressPage((x) => Math.min(progressTotalPages - 1, x + 1))
-                        }
-                        aria-label="Next in-progress page"
-                      >
-                        ›
-                      </button>
+                      {patients.length > visibleOngoing && (
+                        <div className="dash-patient-load-more">Scroll for more…</div>
+                      )}
                     </div>
                   </>
                 )}
               </section>
+              )}
 
+              {patientListTab === 'done' && (
               <section className="dash-patient-section">
-                <div className="dash-patient-section-head">
-                  <h2 className="dash-patient-section-title">Done</h2>
-                  <span className="dash-patient-count dash-patient-count-done">
-                    {donePatients.length}
-                  </span>
-                </div>
                 {donePatients.length === 0 ? (
                   <p className="dash-patient-empty-line">
                     No completed records yet. Finished pathways will show here.
                   </p>
                 ) : (
                   <>
-                    <div className="dash-patient-table-wrap">
+                    <div
+                      className="dash-patient-table-wrap"
+                      ref={tableScrollRef}
+                      onScroll={onTableScroll}
+                    >
                       <table className="dash-patient-table">
                         <thead>
                           <tr>
@@ -1325,7 +1350,7 @@ export default function Dashboard({
                           </tr>
                         </thead>
                         <tbody>
-                          {doneSlice.map((r) => {
+                          {donePatients.slice(0, visibleDone).map((r) => {
                             const startIso = r.started_at || r.created_at
                             const pathText =
                               r.path ||
@@ -1352,43 +1377,18 @@ export default function Dashboard({
                               </tr>
                             )
                           })}
-                          {Array.from({
-                            length: Math.max(0, PATIENT_PAGE_SIZE - doneSlice.length),
-                          }).map((_, i) => (
-                            <tr key={`done-empty-${i}`} className="dash-patient-row-empty">
-                              <td colSpan={6}>&nbsp;</td>
-                            </tr>
-                          ))}
                         </tbody>
                       </table>
-                    </div>
-                    <div className="dash-patient-pager">
-                      <button
-                        type="button"
-                        className="dash-pager-btn"
-                        disabled={doneSafe <= 0}
-                        onClick={() => setDonePage((x) => Math.max(0, x - 1))}
-                        aria-label="Previous done page"
-                      >
-                        ‹
-                      </button>
-                      <span className="dash-pager-label">
-                        {doneSafe + 1} / {doneTotalPages}
-                      </span>
-                      <button
-                        type="button"
-                        className="dash-pager-btn"
-                        disabled={doneSafe >= doneTotalPages - 1}
-                        onClick={() => setDonePage((x) => Math.min(doneTotalPages - 1, x + 1))}
-                        aria-label="Next done page"
-                      >
-                        ›
-                      </button>
+                      {donePatients.length > visibleDone && (
+                        <div className="dash-patient-load-more">Scroll for more…</div>
+                      )}
                     </div>
                   </>
                 )}
               </section>
+              )}
             </div>
+            </>
           )}
         </main>
         )

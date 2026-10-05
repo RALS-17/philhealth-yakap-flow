@@ -2,15 +2,28 @@ import { StrictMode, useEffect, useState, FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import Dashboard from './Dashboard'
+import BenefitsApp from './BenefitsApp'
+import BenefitsDashboard from './BenefitsDashboard'
 import {
   login,
   logout,
   getSession,
   type AuthUser,
 } from './lib/auth'
+import {
+  loginBenefits,
+  logoutBenefits,
+  getBenefitsSession,
+  isBenefitsEmail,
+  type BenefitsUser,
+} from './lib/benefitsAuth'
 import './index.css'
 
-function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) {
+type AnyUser =
+  | { system: 'flow'; user: AuthUser }
+  | { system: 'benefits'; user: BenefitsUser }
+
+function LoginScreen({ onLogin }: { onLogin: (u: AnyUser) => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -18,13 +31,23 @@ function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) {
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
+    if (isBenefitsEmail(email)) {
+      const user = loginBenefits(email, password)
+      if (!user) {
+        setError('Incorrect benefits email or password.')
+        return
+      }
+      setError(null)
+      onLogin({ system: 'benefits', user })
+      return
+    }
     const user = login(email, password)
     if (!user) {
       setError('Incorrect email or password.')
       return
     }
     setError(null)
-    onLogin(user)
+    onLogin({ system: 'flow', user })
   }
 
   return (
@@ -40,7 +63,7 @@ function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) {
           />
         </div>
         <h1 className="auth-card-title">Welcome back</h1>
-        <p className="auth-card-sub">Sign in to GCare PhilHealth Benefits</p>
+        <p className="auth-card-sub">Sign in to GCare PhilHealth systems</p>
 
         <div className="auth-field">
           <label htmlFor="auth-email">Email</label>
@@ -91,53 +114,90 @@ function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) {
           Sign in
         </button>
 
-        <p className="auth-footer-hint">Staff opens pathways · Admin opens dashboard</p>
       </form>
     </div>
   )
 }
 
 function Root() {
-  const [user, setUser] = useState<AuthUser | null>(() => getSession())
+  const [session, setSession] = useState<AnyUser | null>(() => {
+    const b = getBenefitsSession()
+    if (b) return { system: 'benefits', user: b }
+    const f = getSession()
+    if (f) return { system: 'flow', user: f }
+    return null
+  })
 
   useEffect(() => {
-    if (!user) return
-    if (user.role === 'admin') {
+    if (!session) return
+    if (session.system === 'benefits') {
+      const want = session.user.role === 'admin' ? 'benefits-monitor' : 'benefits'
+      if (window.location.hash.replace(/^#\/?/, '') !== want) {
+        window.location.hash = `#${want}`
+      }
+    } else if (session.user.role === 'admin') {
       if (window.location.hash.replace(/^#\/?/, '') !== 'monitor') {
         window.location.hash = '#monitor'
       }
     } else {
-      if (window.location.hash.replace(/^#\/?/, '') === 'monitor') {
+      const h = window.location.hash.replace(/^#\/?/, '')
+      if (h === 'monitor' || h.startsWith('benefits')) {
         window.location.hash = '#/'
       }
     }
-  }, [user])
+  }, [session])
 
   const handleLogout = () => {
     logout()
-    setUser(null)
+    logoutBenefits()
+    setSession(null)
     window.location.hash = '#/'
   }
 
-  if (!user) {
+  if (!session) {
     return (
       <LoginScreen
         onLogin={(u) => {
-          setUser(u)
-          window.location.hash = u.role === 'admin' ? '#monitor' : '#/'
+          setSession(u)
+          if (u.system === 'benefits') {
+            window.location.hash = u.user.role === 'admin' ? '#benefits-monitor' : '#benefits'
+          } else {
+            window.location.hash = u.user.role === 'admin' ? '#monitor' : '#/'
+          }
         }}
       />
     )
   }
 
-  if (user.role === 'admin') {
+  if (session.system === 'benefits') {
+    if (session.user.role === 'admin') {
+      return (
+        <BenefitsDashboard
+          onLogout={handleLogout}
+          adminEmail={session.user.email}
+          siteCode={session.user.siteCode}
+          siteName={session.user.siteName}
+        />
+      )
+    }
+    return (
+      <BenefitsApp
+        onLogout={handleLogout}
+        staffEmail={session.user.email}
+        siteCode={session.user.siteCode}
+        siteName={session.user.siteName}
+      />
+    )
+  }
+
+  if (session.user.role === 'admin') {
     return (
       <Dashboard
         onLogout={handleLogout}
-        adminEmail={user.email}
-        siteCode={user.siteCode}
-        siteName={user.siteName}
-        siteLocation={user.siteLocation}
+        adminEmail={session.user.email}
+        siteCode={session.user.siteCode}
+        siteName={session.user.siteName}
+        siteLocation={session.user.siteLocation}
       />
     )
   }
@@ -145,10 +205,10 @@ function Root() {
   return (
     <App
       onLogout={handleLogout}
-      staffEmail={user.email}
-      siteCode={user.siteCode}
-      siteName={user.siteName}
-      siteLocation={user.siteLocation}
+      staffEmail={session.user.email}
+      siteCode={session.user.siteCode}
+      siteName={session.user.siteName}
+      siteLocation={session.user.siteLocation}
     />
   )
 }

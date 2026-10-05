@@ -296,7 +296,7 @@ export async function upsertSession(
   id: string,
   label: string,
   snapshot: FlowSnapshot,
-  siteCode: SiteCode | string,
+  siteCode: SiteCode | string = 'gcmcc',
   note?: string,
 ): Promise<ParkedSession> {
   const now = new Date().toISOString()

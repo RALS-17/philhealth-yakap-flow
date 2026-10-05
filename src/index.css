@@ -1501,9 +1501,10 @@ h1 {
 }
 
 .dash-patient-table-wrap {
-  background: #fff;
-  border: 1px solid #e8ecf4;
-  border-radius: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
   overflow-x: auto;
   overflow-y: hidden;
   width: 100%;
@@ -1514,42 +1515,46 @@ h1 {
   width: 100%;
   min-width: 640px;
   border-collapse: collapse;
-  font-size: 0.84rem;
+  font-size: 0.88rem;
+  background: transparent;
 }
 
 .dash-patient-table th {
   text-align: left;
-  padding: 7px 10px;
-  font-size: 0.68rem;
-  font-weight: 800;
+  padding: 6px 4px 8px;
+  font-size: 0.65rem;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #64748b;
-  background: #f8fafc;
-  border-bottom: 1px solid #e8ecf4;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  background: transparent;
+  border-bottom: 1px solid #e5e7eb;
   white-space: nowrap;
 }
 
 .dash-patient-table td {
-  padding: 8px 10px;
-  border-bottom: 1px solid #f1f5f9;
+  padding: 10px 4px;
+  border-bottom: 1px solid #e5e7eb;
   vertical-align: middle;
   color: #334155;
-  line-height: 1.25;
+  line-height: 1.3;
+  background: transparent;
 }
 
 .dash-patient-table tr:last-child td {
-  border-bottom: none;
+  border-bottom: 1px solid #e5e7eb;
 }
 
 .dash-patient-table tbody tr:hover {
-  background: #f8fafc;
+  background: rgba(248, 250, 252, 0.9);
 }
 
 .dash-patient-row-empty td {
-  height: 34px;
-  border-bottom: 1px solid #f1f5f9 !important;
-  background: transparent;
+  height: 28px;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom: 1px solid #e5e7eb !important;
+  background: transparent !important;
   color: transparent;
   pointer-events: none;
   user-select: none;
@@ -1560,12 +1565,13 @@ h1 {
 }
 
 .dash-patient-name {
-  font-weight: 800;
-  color: #0f172a;
+  font-weight: 600;
+  color: #1e293b;
   white-space: nowrap;
-  max-width: 140px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 0.92rem;
 }
 
 .dash-patient-path-cell {
@@ -4537,4 +4543,642 @@ img, svg, video {
   .component-card-action:active {
     opacity: 0.92;
   }
+}
+
+/* ========== Benefits Programs system ========== */
+.ben-shell .app-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  max-width: none;
+  padding: 0 16px;
+}
+.ben-main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+}
+.ben-title {
+  margin: 0 0 6px;
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #1e3a8a;
+}
+.ben-sub {
+  margin: 0 0 18px;
+  color: #64748b;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.ben-banner {
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  color: #3730a3;
+  padding: 10px 14px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+.ben-notice {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  color: #9a3412;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.ben-notice ol {
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+.ben-name-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 420px;
+  background: #fff;
+  border: 1px solid #e8ecf4;
+  border-radius: 14px;
+  padding: 18px;
+}
+.ben-name-form label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #64748b;
+}
+.ben-name-form input {
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 1rem;
+  font-family: inherit;
+}
+.ben-name-form input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+.ben-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.ben-patient-tag {
+  font-size: 0.88rem;
+  color: #475569;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+.ben-step-card {
+  background: #fff;
+  border: 1px solid #e8ecf4;
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+.ben-step-card h2 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  color: #0f172a;
+}
+.ben-step-card p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.5;
+  font-weight: 600;
+}
+.ben-census-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: 12px;
+}
+.ben-census-card h2 {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+}
+.ben-census-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ben-census-list li {
+  display: grid;
+  grid-template-columns: minmax(100px, 1.2fr) 1fr 2.5rem 2.5rem;
+  gap: 10px;
+  align-items: center;
+}
+.ben-census-name {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #0f172a;
+}
+.ben-census-track {
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.ben-census-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4f46e5, #6366f1);
+  border-radius: 999px;
+}
+.ben-census-count {
+  text-align: right;
+  font-weight: 800;
+  color: #4f46e5;
+}
+.ben-census-pct {
+  font-style: normal;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  font-weight: 700;
+  text-align: right;
+}
+.ben-dash .dash-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+.ben-dash .dash-account em {
+  font-style: normal;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #c2410c;
+  background: #ffedd5;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.queue-form label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+.queue-form input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+.queue-form input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+.info-card {
+  background: #fff;
+  border: 1px solid #e8ecf4;
+  border-radius: 14px;
+  padding: 16px 18px;
+  color: #334155;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.info-card ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+
+/* Shared action row (Benefits + flow) */
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+/* Benefits dashboard — census list must not collapse */
+.ben-census-panel {
+  flex: none !important;
+  min-height: auto !important;
+  overflow: visible !important;
+  height: auto !important;
+}
+.ben-census-list-rows {
+  flex: none !important;
+  min-height: auto !important;
+  margin-top: 12px !important;
+  gap: 10px !important;
+}
+.ben-census-list-rows li {
+  min-height: 28px;
+}
+
+/* Benefits system — less rounded cards */
+.ben-app {
+  --radius: 10px;
+}
+.ben-app .choice-card,
+.ben-app .component-card,
+.ben-app .component-card-action,
+.ben-app .session-active-bar,
+.ben-app .session-parked-block,
+.ben-app .result-header,
+.ben-app .note-box,
+.ben-app .info-card,
+.ben-app .queue-form input,
+.ben-app .btn {
+  border-radius: 10px !important;
+}
+.ben-app .choice-card {
+  border-radius: 10px !important;
+}
+.ben-app .session-list-item,
+.ben-app .session-resume-btn,
+.ben-app .session-discard-btn {
+  border-radius: 8px !important;
+}
+.ben-app .badge {
+  border-radius: 6px !important;
+}
+
+
+
+/* Benefits — patient name registration panel */
+.ben-name-screen {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 24px;
+}
+.ben-name-panel {
+  width: 100%;
+  max-width: 560px;
+  background: #fff;
+  border: 1.5px solid #d0d7e6;
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+.ben-name-panel-head {
+  padding: 18px 20px 14px;
+  background: linear-gradient(180deg, #eef2ff 0%, #fff 100%);
+  border-bottom: 1px solid #e8ecf4;
+}
+.ben-name-step {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #4f46e5;
+  background: #e0e7ff;
+  padding: 3px 8px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+.ben-name-panel-head h2 {
+  margin: 0 0 6px;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+.ben-name-panel-head p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #64748b;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.ben-name-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 20px 20px;
+}
+.ben-name-form label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+.ben-name-form input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1.5px solid #c7d2fe;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 1.05rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: #0f172a;
+  background: #fafbff;
+}
+.ben-name-form input:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
+  background: #fff;
+}
+.ben-name-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+.ben-name-actions .btn {
+  min-height: 44px;
+}
+.ben-name-actions .btn-green {
+  flex: 1 1 200px;
+  justify-content: center;
+}
+.ben-name-actions .btn-outline {
+  flex: 0 1 auto;
+}
+@media (max-width: 520px) {
+  .ben-name-actions {
+    flex-direction: column;
+  }
+  .ben-name-actions .btn {
+    width: 100%;
+  }
+}
+
+/* Benefits — simple expanded name field, centered buttons */
+.ben-name-simple {
+  width: 100%;
+  max-width: none;
+  margin: 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ben-name-simple label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+.ben-name-simple input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1.5px solid #c7d2fe;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 1.05rem;
+  font-family: inherit;
+  font-weight: 600;
+}
+.ben-name-simple input:focus {
+  outline: none;
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+}
+.ben-name-simple-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+/* Staff patient list — flat rows, line dividers only (no card) */
+.staff-patient-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.staff-patient-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  background: transparent;
+}
+.staff-patient-table thead th {
+  text-align: left;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  padding: 6px 4px 8px;
+  border-bottom: 1px solid #e5e7eb;
+  background: transparent;
+}
+.staff-patient-actions-col {
+  text-align: right !important;
+  width: 120px;
+  padding-right: 4px !important;
+}
+.staff-patient-row {
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+.staff-patient-row:hover {
+  background: rgba(248, 250, 252, 0.9);
+}
+.staff-patient-row td {
+  padding: 10px 4px;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: middle;
+  background: transparent;
+}
+.staff-patient-row:last-child td {
+  border-bottom: 1px solid #e5e7eb;
+}
+.staff-patient-name-cell {
+  min-width: 0;
+}
+.staff-patient-name {
+  display: block;
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 0.92rem;
+  line-height: 1.3;
+}
+/* Path meta hidden in compact view — row still shows name only like the reference */
+.staff-patient-meta {
+  display: none;
+}
+.staff-patient-actions-cell {
+  text-align: right;
+  white-space: nowrap;
+  padding-right: 0 !important;
+}
+.staff-patient-edit,
+.staff-patient-delete {
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1.4;
+}
+.staff-patient-edit {
+  color: #64748b;
+}
+.staff-patient-edit:hover {
+  color: #334155;
+}
+.staff-patient-delete {
+  color: #ef4444;
+  margin-left: 4px;
+}
+.staff-patient-delete:hover {
+  color: #dc2626;
+}
+
+.session-parked-block.session-parked-flat {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 4px 0 0;
+}
+.session-parked-flat .session-hub-heading {
+  margin-bottom: 6px;
+  padding: 0 4px;
+}
+
+/* Admin patient list — Ongoing / Done tabs (like DASHBOARD | TICKET LIST) */
+.dash-patient-tabs {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 16px;
+  padding: 0;
+  background: transparent;
+  width: 100%;
+  max-width: 100%;
+}
+.dash-patient-tab {
+  border: 1.5px solid #c7d2fe;
+  background: #fff;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #4338ca;
+  padding: 4px 16px;
+  min-width: 120px;
+  height: 28px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  transition: background 0.12s, color 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.dash-patient-tab:hover {
+  background: #eef2ff;
+  color: #3730a3;
+}
+.dash-patient-tab-active {
+  background: #4f46e5 !important;
+  border-color: #4f46e5 !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.28);
+}
+.dash-patient-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #e0e7ff;
+  color: #4338ca;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.dash-patient-tab-active .dash-patient-tab-count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+/* Zebra rows + equal row height */
+.dash-patient-table tbody tr {
+  height: 44px;
+}
+.dash-patient-table tbody tr:nth-child(odd) {
+  background: #f8fafc;
+}
+.dash-patient-table tbody tr:nth-child(even) {
+  background: #ffffff;
+}
+.dash-patient-table tbody tr:hover {
+  background: #eef2ff !important;
+}
+.dash-patient-table td {
+  height: 44px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.dash-patient-table-wrap {
+  min-height: 0;
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  overflow-x: auto;
+}
+.dash-patient-scroll-sentinel {
+  height: 1px;
+  width: 100%;
+}
+.dash-patient-load-more {
+  text-align: center;
+  padding: 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #94a3b8;
+}
+.dash-main-patients {
+  flex: 1;
+  min-height: 0;
+}
+.dash-patient-sections {
+  flex: 1;
+  min-height: 0;
+}
+.dash-patient-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.dash-patient-empty-line {
+  text-align: center;
+  padding: 16px 8px !important;
+  height: auto !important;
+  color: #94a3b8 !important;
+  font-weight: 600;
+  background: transparent !important;
 }

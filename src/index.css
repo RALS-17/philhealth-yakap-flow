@@ -5182,3 +5182,124 @@ img, svg, video {
   font-weight: 600;
   background: transparent !important;
 }
+
+/* Benefits program cards — includes / notes */
+.ben-program-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  cursor: default;
+  text-align: left;
+}
+.ben-program-card-main {
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 16px 16px 12px;
+  width: 100%;
+  color: inherit;
+}
+.ben-program-card-main:hover h3 {
+  color: var(--blue);
+}
+.ben-program-includes {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #e2e8f0;
+}
+.ben-program-includes-label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+.ben-program-includes ul {
+  margin: 0;
+  padding: 0 0 0 16px;
+  list-style: disc;
+}
+.ben-program-includes li {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #475569;
+  line-height: 1.35;
+  margin-bottom: 2px;
+}
+.ben-program-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 12px 14px;
+}
+.ben-program-link-btn {
+  flex: 1 1 auto;
+  min-height: 36px;
+  font-size: 0.8rem;
+  justify-content: center;
+}
+
+/* YAKAP Standard — optional Gamot / Cancer at step 5 */
+.ben-yakap-step5-options {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border: 1px dashed #c7d2fe;
+  border-radius: 10px;
+}
+.ben-yakap-step5-label {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.4;
+}
+.ben-yakap-step5-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.ben-yakap-step5-btns .btn {
+  min-height: 40px;
+}
+
+/* Benefits — less circular cards */
+.ben-app .choice-card,
+.ben-app .ben-program-card,
+.ben-app .component-card,
+.ben-app .info-card,
+.ben-app .session-hub-card,
+.ben-app .result-header,
+.ben-app .note-box {
+  border-radius: 8px !important;
+}
+.ben-app .btn,
+.ben-app .btn-outline,
+.ben-app .btn-green,
+.ben-app .btn-primary {
+  border-radius: 8px !important;
+}
+
+.ben-gamot-list-panel {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.ben-gamot-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.ben-gamot-list-head strong {
+  font-size: 0.95rem;
+  color: #0f172a;
+}

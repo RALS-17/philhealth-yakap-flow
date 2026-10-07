@@ -8,6 +8,7 @@ import {
   type BenefitsSession,
   type BenefitsSnapshot,
 } from './lib/benefitsStore'
+import { EGAMOT_54_BY_CATEGORY, GAMOT_21_BY_CATEGORY } from './lib/gamotLists'
 
 type PayType = 'cash' | 'hmo' | null
 
@@ -15,6 +16,8 @@ type ProgramDef = {
   id: string
   name: string
   short: string
+  /** Included benefits / notes shown on the program card */
+  includes?: string[]
   steps: { title: string; body: string }[]
 }
 
@@ -74,6 +77,14 @@ const PROGRAMS: ProgramDef[] = [
     id: 'nbb',
     name: 'NBB',
     short: 'Indigent · No Balance Billing (Adult PhilHealth NBB Ecosystem)',
+    includes: [
+      'NSD',
+      'CS',
+      'Mastectomy',
+      'Curettage',
+      'Basic Sleep Study',
+      'Others (as applicable under NBB)',
+    ],
     steps: [
       {
         title: '1. Patient Entry Gate',
@@ -121,6 +132,11 @@ const PROGRAMS: ProgramDef[] = [
     id: 'yakap-standard',
     name: 'YAKAP Standard',
     short: 'YAKAP Standard Benefits (OPD / primary care pathway)',
+    includes: [
+      'Primary care / consultation',
+      'Laboratory',
+      'Gamot lists & Cancer screening available at step 5 (optional)',
+    ],
     steps: [
       {
         title: 'OPD / Discharged Patient',
@@ -295,7 +311,14 @@ const PROGRAMS: ProgramDef[] = [
   {
     id: 'day-surgery',
     name: 'Day Surgery',
-    short: 'Day Surgery / Procedure (Woundcare · Endoscopy · HSG and similar same-day cases)',
+    short: 'Day Surgery / Procedure · doctor’s order required',
+    includes: [
+      'AVF',
+      'Colonoscopy',
+      'Nasal Endoscopy',
+      'IJ Cut (with special endorsement)',
+      'Woundcare · Endoscopy · HSG & similar',
+    ],
     steps: [
       {
         title: 'Day Surgery pathway selected',
@@ -324,6 +347,75 @@ const PROGRAMS: ProgramDef[] = [
       {
         title: 'Discharge / END',
         body: 'Patient discharged same day when clinically appropriate. Pathway complete.',
+      },
+    ],
+  },
+  {
+    id: 'inter-global-referral',
+    name: 'Inter Global Referral',
+    short: 'Inter-Global Referral for Diagnostic Procedures (GCMCC NSD-ER-PF-004/N)',
+    includes: [
+      'In-Patient · ER · OPD / Walk-In',
+      'Scheduler / CRO coordination',
+      'Self-conduction or GCMCC / Global ambulance',
+      'Refer to QMS_MD-F-061/N for procedure list',
+    ],
+    steps: [
+      {
+        title: 'START — Patient type',
+        body: 'Select entry: A. In-Patient · B. E.R. Patient · C. OPD / Walk-In. Attending Physician / NOD orders diagnostic procedures available at other Global hospitals (10–20 min).',
+      },
+      {
+        title: 'Consultation',
+        body: 'Complete consultation. For OPD/Walk-In: after consultation, AP/Consultant gives request for diagnostic procedures available at other Global Hospitals.',
+      },
+      {
+        title: 'AP will give order / instruction',
+        body: 'Attending Physician / Consultant / Patient / OPD Secretary — AP issues order or instruction (about 3–5 minutes).',
+      },
+      {
+        title: 'Route desk (JCON / ROD / OPD)',
+        body: 'A. In-Patient → JCON/NOD · B. ER → ROD/NOD · C. OPD/Walk-In → OPD Common Sec. Then proceed to Call Scheduler/CRO.',
+      },
+      {
+        title: 'Call Scheduler / CRO',
+        body: 'JCON/ROD/NOD/OPD Common Sec calls Scheduler/CRO to arrange schedule with other Global hospital (10–20 min). Scheduler/CRO informs GCMCC HA/AO for Medical and updates Viber Chat Group.',
+      },
+      {
+        title: 'Inform GCMCC HA / AO for Medical',
+        body: 'Scheduler/CRO Hospital Administrator / AO for Medical is informed of the inter-global diagnostic referral.',
+      },
+      {
+        title: 'Coordinate with other Global hospital team',
+        body: 'Scheduler/CRO coordinates schedule with other Global hospital team and updates the Viber Chat Group.',
+      },
+      {
+        title: 'OPD/Walk-In — Self-Conduction?',
+        body: 'For OPD/Walk-In only: Is this Self-Conduction? YES → Path B (patient/relative transport). NO → GCMCC Ambulance / Other Global Hospital Ambulance / Patient Transport Vehicle path. (ER / In-Patient use conduction path.)',
+      },
+      {
+        title: 'Path B — Confirm final schedule (Self-Conduction YES)',
+        body: 'Scheduler/CRO confirms final schedule of patient with the other Global Hospital and informs the patient.',
+      },
+      {
+        title: 'Path B — Patient / relative arranges transportation',
+        body: 'Patient or patient’s relative arranges their own transportation to the other Global Hospital.',
+      },
+      {
+        title: 'Path B — Arrival at other Global Hospital → END',
+        body: 'Patient arrives at the other Global Hospital for the diagnostic procedure. Self-conduction path complete (END).',
+      },
+      {
+        title: 'Conduction — GCMCC / Global ambulance path (Self-Conduction NO)',
+        body: 'Use GCMCC Ambulance, Other Global Hospital Ambulance, or Patient Transport Vehicle. Scheduler/CRO informs NOD of final schedule. NOD fills out Ambulance Conduction Form (must be approved/signed by SHO/Chief Nurse/Nurse Supervisor on duty). Form: GCMCC-QMS-NS-F-057.',
+      },
+      {
+        title: 'Conduction — Facilitate & endorse',
+        body: 'Conduction team facilitates conduction. Endorse patient to ER staff / section of the other Global Hospital in charge of the diagnostic procedure. Update Viber Chat Group and Inter-Global Hospital Scheduler Spreadsheet.',
+      },
+      {
+        title: 'Conduction — Accounting & payment → END',
+        body: 'After conduction, submit Ambulance Conduction Form to Accounting. Accounting issues payment to the conduction team. Pathway complete (END).',
       },
     ],
   },
@@ -359,6 +451,11 @@ export default function BenefitsApp({
   const finishingRef = useRef(false)
   const [oecbView, setOecbView] = useState<'overview' | 'tables' | 'coordination'>('overview')
   const [oecbTab, setOecbTab] = useState<'overview' | 'exclusions' | 'groups' | 'covered' | 'pathways'>('overview')
+  /** Inter Global Referral: entry type + OPD self-conduction branch */
+  const [igrEntry, setIgrEntry] = useState<'inpatient' | 'er' | 'opd' | null>(null)
+  const [igrSelfConduction, setIgrSelfConduction] = useState<'yes' | 'no' | null>(null)
+  /** YAKAP step 5: show Gamot medicine lists (same as flow guide) */
+  const [showGamotList, setShowGamotList] = useState<null | 'picker' | '54' | '21'>(null)
 
   useEffect(() => {
     const logoPath = `${import.meta.env.BASE_URL}global-care-logo.svg`
@@ -369,6 +466,35 @@ export default function BenefitsApp({
     () => PROGRAMS.find((p) => p.id === programId) ?? null,
     [programId],
   )
+
+  /** Inter Global Referral steps filtered by entry + self-conduction branch */
+  const activeProgramSteps = useMemo(() => {
+    if (!program) return []
+    if (program.id !== 'inter-global-referral') return program.steps
+    const all = program.steps
+    // indices: 0 entry, 1 consult, 2 AP order, 3 route, 4 call sched, 5 HA/AO, 6 coordinate,
+    // 7 self-conduction question, 8-10 path B, 11-13 ambulance
+    const common = all.slice(0, 7)
+    const askSelf = all[7]
+    const pathB = all.slice(8, 11)
+    const ambulance = all.slice(11, 14)
+
+    if (igrEntry === null) {
+      return [all[0]]
+    }
+    // After entry chosen, show common through coordinate
+    if (igrEntry === 'opd') {
+      if (igrSelfConduction === null) {
+        return [...common, askSelf]
+      }
+      if (igrSelfConduction === 'yes') {
+        return [...common, askSelf, ...pathB]
+      }
+      return [...common, askSelf, ...ambulance]
+    }
+    // In-patient / ER → skip self-conduction question; use ambulance/conduction path
+    return [...common, ...ambulance]
+  }, [program, igrEntry, igrSelfConduction])
 
   const locationLabel = siteName.replace(/^Global Care\s*/i, '') || siteName
 
@@ -457,6 +583,9 @@ export default function BenefitsApp({
   }
 
   const openProgram = (p: ProgramDef) => {
+    setIgrEntry(null)
+    setIgrSelfConduction(null)
+    setShowGamotList(null)
     setProgramId(p.id)
     setStepIndex(0)
     setPath((prev) => [...prev.filter((x) => x !== p.name), p.name])
@@ -480,7 +609,7 @@ export default function BenefitsApp({
       setStepIndex(2)
       return
     }
-    if (program.id !== 'oecb' && stepIndex < program.steps.length - 1) {
+    if (program.id !== 'oecb' && stepIndex < activeProgramSteps.length - 1) {
       setStepIndex((i) => i + 1)
       return
     }
@@ -816,16 +945,27 @@ export default function BenefitsApp({
             </p>
             <div className="card-grid">
               {PROGRAMS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className="choice-card"
-                  onClick={() => openProgram(p)}
-                >
-                  <div className="icon">📋</div>
-                  <h3>{p.name}</h3>
-                  <p>{p.short}</p>
-                </button>
+                <div key={p.id} className="choice-card ben-program-card">
+                  <button
+                    type="button"
+                    className="ben-program-card-main"
+                    onClick={() => openProgram(p)}
+                  >
+                    <div className="icon">📋</div>
+                    <h3>{p.name}</h3>
+                    <p>{p.short}</p>
+                    {p.includes && p.includes.length > 0 && (
+                      <div className="ben-program-includes">
+                        <span className="ben-program-includes-label">Includes / notes</span>
+                        <ul>
+                          {p.includes.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </button>
+                </div>
               ))}
             </div>
             <div className="action-row" style={{ marginTop: 16 }}>
@@ -1169,13 +1309,13 @@ export default function BenefitsApp({
               <h2>{program.name}</h2>
               <p>
                 Patient: <strong>{patientName}</strong> · Step {stepIndex + 1} of{' '}
-                {program.steps.length}
+                {activeProgramSteps.length}
               </p>
               <div className="badge">{program.short}</div>
             </div>
 
             <div className="progress-wrap" aria-hidden="true">
-              {program.steps.map((_, i) => (
+              {activeProgramSteps.map((_, i) => (
                 <div
                   key={i}
                   className={`progress-dot${i === stepIndex ? ' active' : ''}${i < stepIndex ? ' done' : ''}`}
@@ -1184,7 +1324,7 @@ export default function BenefitsApp({
             </div>
 
             <ul className="flow-steps" style={{ marginBottom: 16 }}>
-              {program.steps.map((st, i) => (
+              {activeProgramSteps.map((st, i) => (
                 <li
                   key={`${st.title}-${i}`}
                   style={{
@@ -1213,24 +1353,255 @@ export default function BenefitsApp({
               ))}
             </ul>
 
+            {program.id === 'inter-global-referral' && stepIndex === 0 && (
+              <div className="card-grid" style={{ marginBottom: 14 }}>
+                <button
+                  type="button"
+                  className="choice-card"
+                  onClick={() => {
+                    setIgrEntry('inpatient')
+                    setIgrSelfConduction(null)
+                    setStepIndex(1)
+                    setPath((prev) => [...prev, 'In-Patient'])
+                  }}
+                >
+                  <h3>A. In-Patient</h3>
+                  <p>Attending Physician / NOD orders diagnostics at other Global hospitals</p>
+                </button>
+                <button
+                  type="button"
+                  className="choice-card"
+                  onClick={() => {
+                    setIgrEntry('er')
+                    setIgrSelfConduction(null)
+                    setStepIndex(1)
+                    setPath((prev) => [...prev, 'E.R. Patient'])
+                  }}
+                >
+                  <h3>B. E.R. Patient</h3>
+                  <p>ER pathway — conduction / ambulance coordination</p>
+                </button>
+                <button
+                  type="button"
+                  className="choice-card"
+                  onClick={() => {
+                    setIgrEntry('opd')
+                    setIgrSelfConduction(null)
+                    setStepIndex(1)
+                    setPath((prev) => [...prev, 'OPD / Walk-In'])
+                  }}
+                >
+                  <h3>C. OPD / Walk-In</h3>
+                  <p>Self-conduction YES → Path B · NO → ambulance path</p>
+                </button>
+              </div>
+            )}
+
+            {program.id === 'inter-global-referral' &&
+              igrEntry === 'opd' &&
+              activeProgramSteps[stepIndex]?.title.startsWith('OPD/Walk-In') && (
+              <div className="card-grid" style={{ marginBottom: 14 }}>
+                <button
+                  type="button"
+                  className="choice-card green-card"
+                  onClick={() => {
+                    setIgrSelfConduction('yes')
+                    setStepIndex((i) => i + 1)
+                    setPath((prev) => [...prev, 'Self-Conduction YES → Path B'])
+                  }}
+                >
+                  <h3>YES — Self-Conduction</h3>
+                  <p>Proceed to letter B: confirm schedule → relative transport → arrival → END</p>
+                </button>
+                <button
+                  type="button"
+                  className="choice-card"
+                  onClick={() => {
+                    setIgrSelfConduction('no')
+                    setStepIndex((i) => i + 1)
+                    setPath((prev) => [
+                      ...prev,
+                      'Self-Conduction NO → GCMCC / Global Ambulance',
+                    ])
+                  }}
+                >
+                  <h3>NO — Ambulance / Transport Vehicle</h3>
+                  <p>GCMCC Ambulance / Other Global Hospital Ambulance / Patient Transport Vehicle → END</p>
+                </button>
+              </div>
+            )}
+
+            {program.id === 'yakap-standard' && stepIndex === 4 && (
+              <div className="ben-yakap-step5-options">
+                <p className="ben-yakap-step5-label">
+                  Optional (not required) — show the Gamot medicine lists, open Cancer Screening, or
+                  continue to step 6 (Follow-up / Referral).
+                </p>
+                <div className="ben-yakap-step5-btns">
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => setShowGamotList('picker')}
+                  >
+                    <span>Show Gamot List</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => {
+                      const ca = PROGRAMS.find((x) => x.id === 'yakap-cancer')
+                      if (ca) openProgram(ca)
+                    }}
+                  >
+                    <span>Open Cancer screening →</span>
+                  </button>
+                </div>
+
+                {showGamotList && (
+                  <div className="ben-gamot-list-panel">
+                    <div className="ben-gamot-list-head">
+                      <strong>YAKAP Gamot Lists</strong>
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => setShowGamotList(null)}
+                      >
+                        <span>Close</span>
+                      </button>
+                    </div>
+
+                    {showGamotList === 'picker' && (
+                      <div className="card-grid" style={{ marginTop: 10 }}>
+                        <button
+                          type="button"
+                          className="choice-card green-card"
+                          onClick={() => setShowGamotList('54')}
+                        >
+                          <h3>54 Gamot (E-GAMOT)</h3>
+                          <p>MedPure / Gamot App · under ₱20,000 annual limit</p>
+                        </button>
+                        <button
+                          type="button"
+                          className="choice-card"
+                          onClick={() => setShowGamotList('21')}
+                        >
+                          <h3>21 Core (GAMOT)</h3>
+                          <p>Hospital Pharmacy / Epress · always in stock</p>
+                        </button>
+                      </div>
+                    )}
+
+                    {showGamotList === '54' && (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ marginBottom: 10 }}
+                          onClick={() => setShowGamotList('picker')}
+                        >
+                          <span>← Back to list choice</span>
+                        </button>
+                        <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
+                          Patient proceeds to <strong>Medpure</strong> for E-GAMOT (54) dispensing via
+                          Gamot App.
+                        </p>
+                        <div className="section-label">E-GAMOT (54) medicine list — by category</div>
+                        {EGAMOT_54_BY_CATEGORY.map((cat) => (
+                          <div key={cat.category} className="med-category">
+                            <div className="med-cat-title">{cat.category}</div>
+                            <div className="med-grid med-grid-3">
+                              {cat.items.map((name, i) => (
+                                <div key={name} className="med-item">
+                                  <span className="med-num">{i + 1}</span>
+                                  <span>{name}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        <p className="section-desc" style={{ marginTop: 8 }}>
+                          Covered under PhilHealth YAKAP for CY 2026
+                        </p>
+                      </>
+                    )}
+
+                    {showGamotList === '21' && (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ marginBottom: 10 }}
+                          onClick={() => setShowGamotList('picker')}
+                        >
+                          <span>← Back to list choice</span>
+                        </button>
+                        <p style={{ fontSize: '0.88rem', marginBottom: 12 }}>
+                          Patient proceeds to <strong>Hospital Pharmacy</strong> for GAMOT (21 Core)
+                          via Epress.
+                        </p>
+                        <div className="section-label">GAMOT (21 Core) medicine list — by category</div>
+                        {GAMOT_21_BY_CATEGORY.map((cat) => (
+                          <div key={cat.category} className="med-category">
+                            <div className="med-cat-title">{cat.category}</div>
+                            <div className="med-grid med-grid-3">
+                              {cat.items.map((name, i) => (
+                                <div key={name} className="med-item">
+                                  <span className="med-num">{i + 1}</span>
+                                  <span>{name}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                        <p className="section-desc" style={{ marginTop: 8 }}>
+                          Covered under PhilHealth YAKAP for CY 2026
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="nav-row">
               <button
                 type="button"
                 className="btn btn-outline"
                 onClick={() => {
+                  if (program.id === 'inter-global-referral' && stepIndex === 0) {
+                    setScreen('programs')
+                    return
+                  }
+                  if (
+                    program.id === 'inter-global-referral' &&
+                    igrEntry === 'opd' &&
+                    activeProgramSteps[stepIndex]?.title.startsWith('OPD/Walk-In')
+                  ) {
+                    setIgrSelfConduction(null)
+                    setStepIndex((i) => Math.max(0, i - 1))
+                    return
+                  }
                   if (stepIndex > 0) setStepIndex((i) => i - 1)
                   else setScreen('programs')
                 }}
               >
                 <span>← Back</span>
               </button>
-              <button type="button" className="btn btn-green" onClick={() => void nextStep()}>
-                <span>
-                  {stepIndex < program.steps.length - 1
-                    ? 'Next step →'
-                    : 'Finish program'}
-                </span>
-              </button>
+              {!(
+                (program.id === 'inter-global-referral' && stepIndex === 0) ||
+                (program.id === 'inter-global-referral' &&
+                  igrEntry === 'opd' &&
+                  igrSelfConduction === null &&
+                  activeProgramSteps[stepIndex]?.title.startsWith('OPD/Walk-In'))
+              ) && (
+                <button type="button" className="btn btn-green" onClick={() => void nextStep()}>
+                  <span>
+                    {stepIndex < activeProgramSteps.length - 1
+                      ? 'Next step →'
+                      : 'Finish program'}
+                  </span>
+                </button>
+              )}
             </div>
           </div>
         )}

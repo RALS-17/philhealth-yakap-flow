@@ -175,7 +175,7 @@ const PROGRAMS: ProgramDef[] = [
       },
       {
         title: 'Select Screening Type',
-        body: 'Choose the indicated screening modality based on risk and clinical criteria (e.g. breast, cervical, colorectal, prostate as applicable).',
+        body: 'Choose screening type: Breast (mammogram → Inter Global Referral), or Cervical / Colorectal / Prostate to continue this pathway.',
       },
       {
         title: 'Screening Checklist',
@@ -456,6 +456,9 @@ export default function BenefitsApp({
   const [igrSelfConduction, setIgrSelfConduction] = useState<'yes' | 'no' | null>(null)
   /** YAKAP step 5: show Gamot medicine lists (same as flow guide) */
   const [showGamotList, setShowGamotList] = useState<null | 'picker' | '54' | '21'>(null)
+  const [cancerScreenType, setCancerScreenType] = useState<
+    'breast' | 'cervical' | 'colorectal' | 'prostate' | null
+  >(null)
 
   useEffect(() => {
     const logoPath = `${import.meta.env.BASE_URL}global-care-logo.svg`
@@ -586,6 +589,7 @@ export default function BenefitsApp({
     setIgrEntry(null)
     setIgrSelfConduction(null)
     setShowGamotList(null)
+    setCancerScreenType(null)
     setProgramId(p.id)
     setStepIndex(0)
     setPath((prev) => [...prev.filter((x) => x !== p.name), p.name])
@@ -1431,6 +1435,66 @@ export default function BenefitsApp({
               </div>
             )}
 
+            {program.id === 'yakap-cancer' && stepIndex === 1 && (
+              <div className="ben-cancer-type-options">
+                <p className="ben-yakap-step5-label">
+                  Select screening type to continue. Breast routes to Inter Global Referral for
+                  mammogram; the others stay on this cancer screening path.
+                </p>
+                <div className="card-grid" style={{ marginBottom: 8 }}>
+                  <button
+                    type="button"
+                    className="choice-card"
+                    onClick={() => {
+                      setCancerScreenType('breast')
+                      setPath((prev) => [...prev, 'Breast / Mammogram → Inter Global'])
+                      const igr = PROGRAMS.find((x) => x.id === 'inter-global-referral')
+                      if (igr) openProgram(igr)
+                    }}
+                  >
+                    <h3>Breast</h3>
+                    <p>Mammogram → Inter Global Referral</p>
+                  </button>
+                  <button
+                    type="button"
+                    className={`choice-card${cancerScreenType === 'cervical' ? ' green-card' : ''}`}
+                    onClick={() => {
+                      setCancerScreenType('cervical')
+                      setPath((prev) => [...prev, 'Cervical screening'])
+                      setStepIndex(2)
+                    }}
+                  >
+                    <h3>Cervical</h3>
+                    <p>Continue cancer screening pathway</p>
+                  </button>
+                  <button
+                    type="button"
+                    className={`choice-card${cancerScreenType === 'colorectal' ? ' green-card' : ''}`}
+                    onClick={() => {
+                      setCancerScreenType('colorectal')
+                      setPath((prev) => [...prev, 'Colorectal screening'])
+                      setStepIndex(2)
+                    }}
+                  >
+                    <h3>Colorectal</h3>
+                    <p>Continue cancer screening pathway</p>
+                  </button>
+                  <button
+                    type="button"
+                    className={`choice-card${cancerScreenType === 'prostate' ? ' green-card' : ''}`}
+                    onClick={() => {
+                      setCancerScreenType('prostate')
+                      setPath((prev) => [...prev, 'Prostate screening'])
+                      setStepIndex(2)
+                    }}
+                  >
+                    <h3>Prostate</h3>
+                    <p>Continue cancer screening pathway</p>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {program.id === 'yakap-standard' && stepIndex === 4 && (
               <div className="ben-yakap-step5-options">
                 <p className="ben-yakap-step5-label">
@@ -1592,7 +1656,8 @@ export default function BenefitsApp({
                 (program.id === 'inter-global-referral' &&
                   igrEntry === 'opd' &&
                   igrSelfConduction === null &&
-                  activeProgramSteps[stepIndex]?.title.startsWith('OPD/Walk-In'))
+                  activeProgramSteps[stepIndex]?.title.startsWith('OPD/Walk-In')) ||
+                (program.id === 'yakap-cancer' && stepIndex === 1)
               ) && (
                 <button type="button" className="btn btn-green" onClick={() => void nextStep()}>
                   <span>

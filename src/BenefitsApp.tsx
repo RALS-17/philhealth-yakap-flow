@@ -95,35 +95,39 @@ const PROGRAMS: ProgramDef[] = [
         body: 'Verify member status and PhilHealth eligibility for NBB (indigent / sponsored / eligible category).',
       },
       {
-        title: '3. Accommodation Gate',
+        title: '3. Endorsement to Social Worker',
+        body: 'Endorse the patient to the Social Worker for interview on socio-economic status (socio status) to support NBB classification and documentation.',
+      },
+      {
+        title: '4. Accommodation Gate',
         body: 'NBB applies when admitted to basic / ward accommodation (YES → NBB ACTIVE ZERO CO-PAY; non-basic follows co-pay path).',
       },
       {
-        title: '4. Adult Clinical Engine',
+        title: '5. Adult Clinical Engine',
         body: 'Continue clinical management under NBB rules for the adult inpatient episode.',
       },
       {
-        title: '5. Ancillary Services',
+        title: '6. Ancillary Services',
         body: 'NO DIRECT NBB COLLECTION at ancillary service points for covered NBB services.',
       },
       {
-        title: '6. Daily Utilization Review',
+        title: '7. Daily Utilization Review',
         body: 'Review daily utilization to keep the case aligned with NBB coverage and documentation.',
       },
       {
-        title: '7. Discharge Readiness Gate',
+        title: '8. Discharge Readiness Gate',
         body: 'Confirm discharge readiness and complete clinical discharge documentation.',
       },
       {
-        title: '8. NBB Billing Control',
+        title: '9. NBB Billing Control',
         body: 'Apply PhilHealth benefit · NBB reconciliation · Covered patient payable = ₱0 · Discharge.',
       },
       {
-        title: '9. Claims / eClaims 3.0',
+        title: '10. Claims / eClaims 3.0',
         body: 'Complete CF4 + CF5, eSOA, and PhilHealth adjudication.',
       },
       {
-        title: '10. Finance + Quality Audit',
+        title: '11. Finance + Quality Audit',
         body: 'Finance + Quality Audit · KPI / Management Loop. NBB ecosystem process complete.',
       },
     ],

@@ -626,6 +626,14 @@ export default function BenefitsApp({
   const [cancerHowToIndex, setCancerHowToIndex] = useState<number | null>(null)
   const [navStack, setNavStack] = useState<NavFrame[]>([])
   const [offlineBanner, setOfflineBanner] = useState<string | null>(null)
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string
+    message: string
+    confirmLabel?: string
+    danger?: boolean
+    onConfirm: () => void | Promise<void>
+  } | null>(null)
+  const [infoModal, setInfoModal] = useState<string | null>(null)
 
   useEffect(() => {
     const logoPath = `${import.meta.env.BASE_URL}global-care-logo.svg`
@@ -704,11 +712,8 @@ export default function BenefitsApp({
       if (finishingRef.current) return
       void upsertBenefitsSession(sessionId, patientName || 'Patient', getSnapshot(), siteCode).then(
         (res) => {
-          if ((res as { localOnly?: boolean }).localOnly) {
-            setOfflineBanner(
-              'Saved on this device only — will sync when online',
-            )
-          } else {
+          // Silent local fallback on auto-save (no modal spam)
+          if (!(res as { localOnly?: boolean }).localOnly) {
             setOfflineBanner(null)
           }
         },
@@ -897,46 +902,47 @@ export default function BenefitsApp({
       setStepIndex((i) => i + 1)
       return
     }
-    // Confirm before marking Done
-    const ok = window.confirm(
-      `Finish this path for "${patientName || 'Patient'}"?\n\nProgram: ${program.name}\nThis will mark the case as Done.`,
-    )
-    if (!ok) return
+    // Centered confirm before marking Done
+    setConfirmModal({
+      title: 'Finish path?',
+      message: `Finish this path for "${patientName || 'Patient'}"?
 
-    // Prevent double-submit (StrictMode / double click)
-    if (finishingRef.current) return
-    finishingRef.current = true
-    try {
-      const idToClear = sessionId
-      const fullPath = formatBenefitsDisplayPath([...path, 'END'])
-      // Clear active session first so auto-save cannot recreate it
-      setSessionId(null)
-      setScreen('done')
-      const sync = await saveBenefitsCompletion({
-        patient_name: patientName || 'Patient',
-        program_id: program.id,
-        program_name: program.name,
-        path: fullPath,
-        site_code: siteCode,
-        started_at: startedAt || undefined,
-      })
-      if (sync.localOnly) {
-        setOfflineBanner(
-          sync.message || 'Saved on this device only — will sync when online',
-        )
-        setSessionMsg(
-          sync.message || 'Saved on this device only — will sync when online',
-        )
-      } else {
-        setOfflineBanner(null)
-      }
-      if (idToClear) await deleteBenefitsSession(idToClear)
-      await refreshPaused()
-    } finally {
-      window.setTimeout(() => {
-        finishingRef.current = false
-      }, 800)
-    }
+Program: ${program.name}
+This will mark the case as Done.`,
+      confirmLabel: 'Finish',
+      onConfirm: () => {
+        void (async () => {
+          if (finishingRef.current) return
+          finishingRef.current = true
+          try {
+            const idToClear = sessionId
+            const fullPath = formatBenefitsDisplayPath([...path, 'END'])
+            setSessionId(null)
+            setScreen('done')
+            const sync = await saveBenefitsCompletion({
+              patient_name: patientName || 'Patient',
+              program_id: program.id,
+              program_name: program.name,
+              path: fullPath,
+              site_code: siteCode,
+              started_at: startedAt || undefined,
+            })
+            if (sync.localOnly) {
+              const msg =
+                sync.message || 'Saved on this device only — will sync when online'
+              setInfoModal(msg)
+              setSessionMsg(msg)
+            }
+            if (idToClear) await deleteBenefitsSession(idToClear)
+            await refreshPaused()
+          } finally {
+            window.setTimeout(() => {
+              finishingRef.current = false
+            }, 800)
+          }
+        })()
+      },
+    })
   }
 
   const pauseAndSave = async () => {
@@ -947,9 +953,7 @@ export default function BenefitsApp({
     const label = patientName || 'Patient'
     const saved = await upsertBenefitsSession(sessionId, label, getSnapshot(), siteCode)
     if ((saved as { localOnly?: boolean }).localOnly) {
-      setOfflineBanner('Saved on this device only — will sync when online')
-    } else {
-      setOfflineBanner(null)
+      setInfoModal('Saved on this device only — will sync when online')
     }
     await refreshPaused()
     setSessionId(null)
@@ -991,14 +995,23 @@ export default function BenefitsApp({
     setSessionMsg(null)
   }
 
-  const removePaused = async (id: string, label: string) => {
-    if (!window.confirm(`Remove paused patient "${label}"?`)) return
-    await deleteBenefitsSession(id)
-    if (sessionId === id) {
-      setSessionId(null)
-      setScreen('pay')
-    }
-    await refreshPaused()
+  const removePaused = (id: string, label: string) => {
+    setConfirmModal({
+      title: 'Remove paused patient?',
+      message: `Remove paused patient "${label}"? This cannot be undone.`,
+      confirmLabel: 'Remove',
+      danger: true,
+      onConfirm: () => {
+        void (async () => {
+          await deleteBenefitsSession(id)
+          if (sessionId === id) {
+            setSessionId(null)
+            setScreen('pay')
+          }
+          await refreshPaused()
+        })()
+      },
+    })
   }
 
   const newPatient = () => {
@@ -1022,12 +1035,52 @@ export default function BenefitsApp({
 
   return (
     <div className="app ben-app">
-      {offlineBanner && (
-        <div className="ben-offline-banner" role="status">
-          <span>{offlineBanner}</span>
-          <button type="button" className="ben-offline-dismiss" onClick={() => setOfflineBanner(null)}>
-            Dismiss
-          </button>
+
+      {confirmModal && (
+        <div className="ben-modal-overlay" role="presentation" onClick={() => setConfirmModal(null)}>
+          <div
+            className="ben-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ben-confirm-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="ben-confirm-title">{confirmModal.title}</h3>
+            <p className="ben-modal-message">{confirmModal.message}</p>
+            <div className="ben-modal-actions">
+              <button type="button" className="btn btn-outline" onClick={() => setConfirmModal(null)}>
+                <span>Cancel</span>
+              </button>
+              <button
+                type="button"
+                className={confirmModal.danger ? 'btn btn-outline ben-modal-danger' : 'btn btn-green'}
+                onClick={() => {
+                  const fn = confirmModal.onConfirm
+                  setConfirmModal(null)
+                  void fn()
+                }}
+              >
+                <span>{confirmModal.confirmLabel || 'Confirm'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {infoModal && (
+        <div className="ben-modal-overlay" role="presentation" onClick={() => setInfoModal(null)}>
+          <div
+            className="ben-modal"
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="ben-modal-message">{infoModal}</p>
+            <div className="ben-modal-actions ben-modal-actions-center">
+              <button type="button" className="btn btn-green" onClick={() => setInfoModal(null)}>
+                <span>OK</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
       <header className="app-header">

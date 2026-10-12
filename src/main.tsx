@@ -19,6 +19,12 @@ import {
 } from './lib/benefitsAuth'
 import './index.css'
 
+/**
+ * Temporary cutover: all staff/admin logins (including old userstaff/useradmin)
+ * open the Benefits system. Set to false to restore Utilization routing.
+ */
+const FORCE_BENEFITS_ONLY = true
+
 type AnyUser =
   | { system: 'flow'; user: AuthUser }
   | { system: 'benefits'; user: BenefitsUser }
@@ -63,7 +69,11 @@ function LoginScreen({ onLogin }: { onLogin: (u: AnyUser) => void }) {
           />
         </div>
         <h1 className="auth-card-title">Welcome back</h1>
-        <p className="auth-card-sub">Sign in to GCare PhilHealth systems</p>
+        <p className="auth-card-sub">
+          {FORCE_BENEFITS_ONLY
+            ? 'Sign in to GCare PhilHealth Benefits Programs'
+            : 'Sign in to GCare PhilHealth systems'}
+        </p>
 
         <div className="auth-field">
           <label htmlFor="auth-email">Email</label>
@@ -130,12 +140,15 @@ function Root() {
 
   useEffect(() => {
     if (!session) return
-    if (session.system === 'benefits') {
-      const want = session.user.role === 'admin' ? 'benefits-monitor' : 'benefits'
+    const role = session.user.role
+    if (FORCE_BENEFITS_ONLY || session.system === 'benefits') {
+      const want = role === 'admin' ? 'benefits-monitor' : 'benefits'
       if (window.location.hash.replace(/^#\/?/, '') !== want) {
         window.location.hash = `#${want}`
       }
-    } else if (session.user.role === 'admin') {
+      return
+    }
+    if (role === 'admin') {
       if (window.location.hash.replace(/^#\/?/, '') !== 'monitor') {
         window.location.hash = '#monitor'
       }
@@ -159,7 +172,7 @@ function Root() {
       <LoginScreen
         onLogin={(u) => {
           setSession(u)
-          if (u.system === 'benefits') {
+          if (FORCE_BENEFITS_ONLY || u.system === 'benefits') {
             window.location.hash = u.user.role === 'admin' ? '#benefits-monitor' : '#benefits'
           } else {
             window.location.hash = u.user.role === 'admin' ? '#monitor' : '#/'
@@ -169,7 +182,8 @@ function Root() {
     )
   }
 
-  if (session.system === 'benefits') {
+  // Temporary: all accounts use Benefits UI (old credentials included)
+  if (FORCE_BENEFITS_ONLY || session.system === 'benefits') {
     if (session.user.role === 'admin') {
       return (
         <BenefitsDashboard

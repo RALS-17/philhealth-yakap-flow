@@ -3182,7 +3182,7 @@ export default function App({
       'Z Benefit Coordinator takes the case and guides documentation.',
       'Verify that GCMCC has a contracted package for this condition.',
       'Check clinical criteria against PhilHealth Z-Benefit requirements.',
-      'Complete pre-authorization and all required documentation.',
+      'Subject for approval of PhilHealth / Complete pre-authorization and all required documentation.',
       'Is the patient qualified for the Z package?',
       zQualified === 'yes'
         ? 'Qualified path: Enroll Package → Treatment Plan → Tranche / Service Documentation → Claims + Follow-up'

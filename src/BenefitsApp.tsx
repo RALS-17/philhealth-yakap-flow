@@ -21,6 +21,128 @@ type ProgramDef = {
   steps: { title: string; body: string }[]
 }
 
+/** Free Cancer Screening options (notes = who can avail; steps = how to avail) */
+type FreeCancerScreenId =
+  | 'breast-ultrasound'
+  | 'mammogram'
+  | 'afp'
+  | 'liver-ultrasound'
+  | 'ldct'
+  | 'colonoscopy'
+
+type FreeCancerScreen = {
+  id: FreeCancerScreenId
+  name: string
+  short: string
+  whoCanAvail: string[]
+  howToAvail: { title: string; body: string }[]
+  /** After how-to-avail steps, open Inter Global Referral */
+  linkToInterGlobal?: boolean
+}
+
+const HOW_TO_AVAIL_COMMON: { title: string; body: string }[] = [
+  {
+    title: 'Physician evaluation',
+    body: 'Undergo evaluation with a physician to determine eligibility based on PhilHealth YAKAP guidelines.',
+  },
+  {
+    title: 'Cancer Screening Request Form',
+    body: 'Receive a Cancer Screening Request Form if qualified.',
+  },
+  {
+    title: 'Present form & PhilHealth details',
+    body: 'Present the request form and PhilHealth details to proceed with the screening test.',
+  },
+  {
+    title: 'Avail screening — NO CASH-OUT / NO BALANCE BILLING',
+    body: 'Avail the screening with NO CASH-OUT and NO BALANCE BILLING.',
+  },
+]
+
+const FREE_CANCER_SCREENS: FreeCancerScreen[] = [
+  {
+    id: 'breast-ultrasound',
+    name: 'Breast Ultrasound',
+    short: 'Free Cancer Screening',
+    whoCanAvail: [
+      'Women aged 50–69 years old (every year)',
+      'Women aged 40–49 years old (every 2 years) with:',
+      '• Family history of breast cancer',
+      '• Previous history of breast cancer',
+    ],
+    howToAvail: HOW_TO_AVAIL_COMMON,
+  },
+  {
+    id: 'mammogram',
+    name: 'Mammogram',
+    short: 'Free Cancer Screening → then Inter Global Referral',
+    whoCanAvail: [
+      'Women aged 50–69 years old (every year)',
+      'Women aged 40–49 years old (every 2 years) with:',
+      '• Family history of breast cancer',
+      '• Previous history of breast cancer',
+    ],
+    howToAvail: HOW_TO_AVAIL_COMMON,
+    linkToInterGlobal: true,
+  },
+  {
+    id: 'afp',
+    name: 'Alpha Fetoprotein (AFP) Blood Test',
+    short: 'Free Cancer Screening',
+    whoCanAvail: [
+      'Individuals with any of the following:',
+      '• Hepatitis B or C',
+      '• Heavy alcohol consumption',
+      '• Diabetes',
+      '• Fatty liver disease',
+      '• Cirrhosis',
+      '• Inherited metabolic diseases',
+    ],
+    howToAvail: HOW_TO_AVAIL_COMMON,
+  },
+  {
+    id: 'liver-ultrasound',
+    name: 'Liver Ultrasound',
+    short: 'Free Cancer Screening',
+    whoCanAvail: [
+      'Individuals with any of the following:',
+      '• Hepatitis B or C',
+      '• Heavy alcohol consumption',
+      '• Diabetes',
+      '• Fatty liver disease',
+      '• Cirrhosis',
+      '• Inherited metabolic diseases',
+    ],
+    howToAvail: HOW_TO_AVAIL_COMMON,
+  },
+  {
+    id: 'ldct',
+    name: 'Low-Dose Chest CT Scan',
+    short: 'Free Cancer Screening',
+    whoCanAvail: [
+      'Adults 50 years old and above (recommended every year)',
+      'With any of the following:',
+      '• Current smoker',
+      '• Former smoker',
+      '• Family history of lung cancer',
+    ],
+    howToAvail: HOW_TO_AVAIL_COMMON,
+  },
+  {
+    id: 'colonoscopy',
+    name: 'Colonoscopy',
+    short: 'Free Cancer Screening',
+    whoCanAvail: [
+      'Adults 50 years old and above (recommended every year)',
+      'With any of the following:',
+      '• Current smoker',
+      '• Former smoker',
+      '• Family history of lung cancer',
+    ],
+    howToAvail: HOW_TO_AVAIL_COMMON,
+  },
+]
+
 /** Steps copied from the flow guide (App.tsx) for each matching package. */
 const PROGRAMS: ProgramDef[] = [
   {
@@ -179,7 +301,7 @@ const PROGRAMS: ProgramDef[] = [
       },
       {
         title: 'Select Screening Type',
-        body: 'Choose screening type: Breast (mammogram → Inter Global Referral), or Cervical / Colorectal / Prostate to continue this pathway.',
+        body: 'Choose the screening type: Breast, Cervical, Colorectal, Prostate, or Free Cancer Screening (Breast Ultrasound, Mammogram, AFP, Liver Ultrasound, LDCT, Colonoscopy).',
       },
       {
         title: 'Screening Checklist',
@@ -362,6 +484,10 @@ const PROGRAMS: ProgramDef[] = [
       'In-Patient · ER · OPD / Walk-In',
       'Scheduler / CRO coordination',
       'Self-conduction or GCMCC / Global ambulance',
+      'Radiation Therapy',
+      'Brachy Therapy',
+      'Cath Lab (Angiogram, Angioplasty)',
+      'Eye Center (soon to open)',
       'Refer to QMS_MD-F-061/N for procedure list',
     ],
     steps: [
@@ -461,8 +587,15 @@ export default function BenefitsApp({
   /** YAKAP step 5: show Gamot medicine lists (same as flow guide) */
   const [showGamotList, setShowGamotList] = useState<null | 'picker' | '54' | '21'>(null)
   const [cancerScreenType, setCancerScreenType] = useState<
-    'breast' | 'cervical' | 'colorectal' | 'prostate' | null
+    | 'breast'
+    | 'cervical'
+    | 'colorectal'
+    | 'prostate'
+    | FreeCancerScreenId
+    | null
   >(null)
+  /** When set, user is in Free Cancer Screening “How to avail” steps */
+  const [cancerHowToIndex, setCancerHowToIndex] = useState<number | null>(null)
 
   useEffect(() => {
     const logoPath = `${import.meta.env.BASE_URL}global-care-logo.svg`
@@ -594,6 +727,7 @@ export default function BenefitsApp({
     setIgrSelfConduction(null)
     setShowGamotList(null)
     setCancerScreenType(null)
+    setCancerHowToIndex(null)
     setProgramId(p.id)
     setStepIndex(0)
     setPath((prev) => [...prev.filter((x) => x !== p.name), p.name])
@@ -1322,6 +1456,7 @@ export default function BenefitsApp({
               <div className="badge">{program.short}</div>
             </div>
 
+            {!(program.id === 'yakap-cancer' && cancerHowToIndex !== null) && (
             <div className="progress-wrap" aria-hidden="true">
               {activeProgramSteps.map((_, i) => (
                 <div
@@ -1330,7 +1465,9 @@ export default function BenefitsApp({
                 />
               ))}
             </div>
+            )}
 
+            {!(program.id === 'yakap-cancer' && cancerHowToIndex !== null) && (
             <ul className="flow-steps" style={{ marginBottom: 16 }}>
               {activeProgramSteps.map((st, i) => (
                 <li
@@ -1360,6 +1497,7 @@ export default function BenefitsApp({
                 </li>
               ))}
             </ul>
+            )}
 
             {program.id === 'inter-global-referral' && stepIndex === 0 && (
               <div className="card-grid" style={{ marginBottom: 14 }}>
@@ -1439,11 +1577,12 @@ export default function BenefitsApp({
               </div>
             )}
 
-            {program.id === 'yakap-cancer' && stepIndex === 1 && (
+            {program.id === 'yakap-cancer' && stepIndex === 1 && cancerHowToIndex === null && (
               <div className="ben-cancer-type-options">
                 <p className="ben-yakap-step5-label">
-                  Select screening type to continue. Breast routes to Inter Global Referral for
-                  mammogram; the others stay on this cancer screening path.
+                  Select screening type. Some options continue this pathway; Free Cancer Screening
+                  types show Who can avail and How to avail. Mammogram continues to Inter Global
+                  Referral after its steps.
                 </p>
                 <div className="card-grid" style={{ marginBottom: 8 }}>
                   <button
@@ -1451,13 +1590,13 @@ export default function BenefitsApp({
                     className="choice-card"
                     onClick={() => {
                       setCancerScreenType('breast')
-                      setPath((prev) => [...prev, 'Breast / Mammogram → Inter Global'])
+                      setPath((prev) => [...prev, 'Breast → Inter Global'])
                       const igr = PROGRAMS.find((x) => x.id === 'inter-global-referral')
                       if (igr) openProgram(igr)
                     }}
                   >
                     <h3>Breast</h3>
-                    <p>Mammogram → Inter Global Referral</p>
+                    <p>Quick route → Inter Global Referral</p>
                   </button>
                   <button
                     type="button"
@@ -1495,9 +1634,135 @@ export default function BenefitsApp({
                     <h3>Prostate</h3>
                     <p>Continue cancer screening pathway</p>
                   </button>
+                  {FREE_CANCER_SCREENS.map((sc) => (
+                    <button
+                      key={sc.id}
+                      type="button"
+                      className={`choice-card${cancerScreenType === sc.id ? ' green-card' : ''}`}
+                      onClick={() => {
+                        setCancerScreenType(sc.id)
+                        setCancerHowToIndex(0)
+                        setPath((prev) => [...prev, sc.name])
+                      }}
+                    >
+                      <h3>{sc.name}</h3>
+                      <p>{sc.short}</p>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
+
+            {program.id === 'yakap-cancer' &&
+              stepIndex === 1 &&
+              cancerHowToIndex !== null &&
+              (() => {
+                const sc = FREE_CANCER_SCREENS.find((x) => x.id === cancerScreenType)
+                if (!sc) return null
+                const total = sc.howToAvail.length
+                const cur = sc.howToAvail[cancerHowToIndex] || sc.howToAvail[0]
+                return (
+                  <div className="ben-cancer-howto">
+                    <div className="result-header teal" style={{ marginBottom: 12 }}>
+                      <h2>{sc.name}</h2>
+                      <p>Free Cancer Screening · How to avail · Step {cancerHowToIndex + 1} of {total}</p>
+                      <div className="badge">{sc.short}</div>
+                    </div>
+
+                    <div className="ben-program-includes" style={{ marginBottom: 14 }}>
+                      <span className="ben-program-includes-label">Who can avail</span>
+                      <ul>
+                        {sc.whoCanAvail.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="progress-wrap" aria-hidden="true">
+                      {sc.howToAvail.map((_, i) => (
+                        <div
+                          key={i}
+                          className={`progress-dot${i === cancerHowToIndex ? ' active' : ''}${i < cancerHowToIndex ? ' done' : ''}`}
+                        />
+                      ))}
+                    </div>
+
+                    <ul className="flow-steps" style={{ marginBottom: 16 }}>
+                      {sc.howToAvail.map((st, i) => (
+                        <li
+                          key={st.title}
+                          style={{
+                            opacity: i === cancerHowToIndex ? 1 : i < cancerHowToIndex ? 0.85 : 0.45,
+                            borderColor: i === cancerHowToIndex ? 'var(--blue)' : undefined,
+                            background: i === cancerHowToIndex ? 'var(--blue-light)' : undefined,
+                          }}
+                        >
+                          <span
+                            className="step-num"
+                            style={{
+                              background: i <= cancerHowToIndex ? 'var(--blue)' : 'var(--border)',
+                            }}
+                          >
+                            {i + 1}
+                          </span>
+                          <div>
+                            <strong>{st.title}</strong>
+                            {i === cancerHowToIndex && (
+                              <div style={{ fontSize: '0.88rem', marginTop: 6, fontWeight: 500 }}>
+                                {st.body}
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="nav-row">
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => {
+                          if (cancerHowToIndex > 0) {
+                            setCancerHowToIndex((i) => (i === null ? 0 : i - 1))
+                          } else {
+                            setCancerHowToIndex(null)
+                            setCancerScreenType(null)
+                          }
+                        }}
+                      >
+                        <span>← Back</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-green"
+                        onClick={() => {
+                          if (cancerHowToIndex < total - 1) {
+                            setCancerHowToIndex((i) => (i === null ? 1 : i + 1))
+                            return
+                          }
+                          // Last how-to step
+                          if (sc.linkToInterGlobal) {
+                            setPath((prev) => [...prev, '→ Inter Global Referral'])
+                            const igr = PROGRAMS.find((x) => x.id === 'inter-global-referral')
+                            if (igr) openProgram(igr)
+                            return
+                          }
+                          setCancerHowToIndex(null)
+                          setStepIndex(2)
+                        }}
+                      >
+                        <span>
+                          {cancerHowToIndex < total - 1
+                            ? 'Next step →'
+                            : sc.linkToInterGlobal
+                              ? 'Continue to Inter Global Referral →'
+                              : 'Continue pathway →'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )
+              })()}
 
             {program.id === 'yakap-standard' && stepIndex === 4 && (
               <div className="ben-yakap-step5-options">
@@ -1631,6 +1896,7 @@ export default function BenefitsApp({
               </div>
             )}
 
+            {!(program.id === 'yakap-cancer' && cancerHowToIndex !== null) && (
             <div className="nav-row">
               <button
                 type="button"
@@ -1661,7 +1927,8 @@ export default function BenefitsApp({
                   igrEntry === 'opd' &&
                   igrSelfConduction === null &&
                   activeProgramSteps[stepIndex]?.title.startsWith('OPD/Walk-In')) ||
-                (program.id === 'yakap-cancer' && stepIndex === 1)
+                (program.id === 'yakap-cancer' && stepIndex === 1) ||
+                (program.id === 'yakap-cancer' && cancerHowToIndex !== null)
               ) && (
                 <button type="button" className="btn btn-green" onClick={() => void nextStep()}>
                   <span>
@@ -1672,6 +1939,7 @@ export default function BenefitsApp({
                 </button>
               )}
             </div>
+            )}
           </div>
         )}
 

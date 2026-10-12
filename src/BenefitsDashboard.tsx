@@ -8,6 +8,7 @@ import {
 } from 'react'
 import {
   fetchBenefitsCompletions,
+  formatBenefitsDisplayPath,
   formatDuration,
   listBenefitsSessions,
   type BenefitsCompletion,
@@ -64,6 +65,7 @@ export default function BenefitsDashboard({
 }: Props) {
   const [adminPage, setAdminPage] = useState<AdminPage>('dashboard')
   const [patientListTab, setPatientListTab] = useState<'ongoing' | 'done'>('ongoing')
+  const [listSearch, setListSearch] = useState('')
   const [visibleOngoing, setVisibleOngoing] = useState(LIST_BATCH)
   const [visibleDone, setVisibleDone] = useState(LIST_BATCH)
   const tableScrollRef = useRef<HTMLDivElement>(null)
@@ -125,10 +127,33 @@ export default function BenefitsDashboard({
     [rows, monthCursor],
   )
 
+  const searchQ = listSearch.trim().toLowerCase()
+
+  const searchedSessions = useMemo(() => {
+    if (!searchQ) return sessions
+    return sessions.filter((s) => {
+      const name = (s.patientName || '').toLowerCase()
+      const prog = (s.snapshot.programName || s.snapshot.programId || '').toLowerCase()
+      const path = (s.snapshot.path || []).join(' ').toLowerCase()
+      return name.includes(searchQ) || prog.includes(searchQ) || path.includes(searchQ)
+    })
+  }, [sessions, searchQ])
+
+  const searchedDone = useMemo(() => {
+    const base = filtered
+    if (!searchQ) return base
+    return base.filter((r) => {
+      const name = (r.patient_name || '').toLowerCase()
+      const prog = (r.program_name || r.program_id || '').toLowerCase()
+      const path = (r.path || '').toLowerCase()
+      return name.includes(searchQ) || prog.includes(searchQ) || path.includes(searchQ)
+    })
+  }, [filtered, searchQ])
+
   useEffect(() => {
     setVisibleOngoing(LIST_BATCH)
     setVisibleDone(LIST_BATCH)
-  }, [patientListTab, sessions.length, filtered.length])
+  }, [patientListTab, searchedSessions.length, searchedDone.length, listSearch])
 
   const onTableScroll = useCallback(() => {
     const el = tableScrollRef.current
@@ -136,11 +161,11 @@ export default function BenefitsDashboard({
     const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 80
     if (!nearBottom) return
     if (patientListTab === 'ongoing') {
-      setVisibleOngoing((n) => Math.min(n + LIST_BATCH, sessions.length))
+      setVisibleOngoing((n) => Math.min(n + LIST_BATCH, searchedSessions.length))
     } else {
-      setVisibleDone((n) => Math.min(n + LIST_BATCH, filtered.length))
+      setVisibleDone((n) => Math.min(n + LIST_BATCH, searchedDone.length))
     }
-  }, [patientListTab, sessions.length, filtered.length])
+  }, [patientListTab, searchedSessions.length, searchedDone.length])
 
   const byProgram = useMemo(() => {
     const map = new Map<string, number>()
@@ -916,6 +941,18 @@ export default function BenefitsDashboard({
                 </p>
               </div>
               <div className="dash-toolbar-actions">
+                <input
+                  type="search"
+                  className="dash-patient-search"
+                  placeholder="Search name or program…"
+                  value={listSearch}
+                  onChange={(e) => {
+                    setListSearch(e.target.value)
+                    setVisibleOngoing(LIST_BATCH)
+                    setVisibleDone(LIST_BATCH)
+                  }}
+                  aria-label="Search patients by name or program"
+                />
                 <button type="button" className="dash-btn-primary" onClick={() => void load()}>
                   Refresh
                 </button>
@@ -936,7 +973,7 @@ export default function BenefitsDashboard({
                 }}
               >
                 Ongoing
-                <span className="dash-patient-tab-count">{sessions.length}</span>
+                <span className="dash-patient-tab-count">{searchedSessions.length}</span>
               </button>
               <button
                 type="button"
@@ -949,7 +986,7 @@ export default function BenefitsDashboard({
                 }}
               >
                 Done
-                <span className="dash-patient-tab-count">{filtered.length}</span>
+                <span className="dash-patient-tab-count">{searchedDone.length}</span>
               </button>
             </div>
 
@@ -971,19 +1008,24 @@ export default function BenefitsDashboard({
                       </tr>
                     </thead>
                     <tbody>
-                      {sessions.length === 0 ? (
+                      {searchedSessions.length === 0 ? (
                         <tr>
                           <td colSpan={5} className="dash-patient-empty-line">
-                            No ongoing patients right now.
+                            {searchQ ? 'No ongoing patients match your search.' : 'No ongoing patients right now.'}
                           </td>
                         </tr>
                       ) : (
-                        sessions.slice(0, visibleOngoing).map((sess) => (
+                        searchedSessions.slice(0, visibleOngoing).map((sess) => (
                           <tr key={sess.id}>
                             <td className="dash-patient-name">{sess.patientName}</td>
-                            <td className="dash-patient-path-cell">
-                              {sess.snapshot.programName || 'Programs list'} · step{' '}
-                              {(sess.snapshot.stepIndex || 0) + 1}
+                            <td
+                              className="dash-patient-path-cell"
+                              title={formatBenefitsDisplayPath(sess.snapshot.path || [])}
+                            >
+                              <strong>{sess.snapshot.programName || 'Programs list'}</strong>
+                              <span className="dash-patient-path-sub">
+                                {formatBenefitsDisplayPath(sess.snapshot.path || [])}
+                              </span>
                             </td>
                             <td className="dash-patient-time">
                               {new Date(sess.createdAt).toLocaleString()}
@@ -999,7 +1041,7 @@ export default function BenefitsDashboard({
                       )}
                     </tbody>
                   </table>
-                  {sessions.length > visibleOngoing && (
+                  {searchedSessions.length > visibleOngoing && (
                     <div className="dash-patient-load-more">Scroll for more…</div>
                   )}
                 </div>
@@ -1025,19 +1067,22 @@ export default function BenefitsDashboard({
                       </tr>
                     </thead>
                     <tbody>
-                      {filtered.length === 0 ? (
+                      {searchedDone.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="dash-patient-empty-line">
-                            No completed records yet.
+                            {searchQ ? 'No completed records match your search.' : 'No completed records yet.'}
                           </td>
                         </tr>
                       ) : (
-                        filtered.slice(0, visibleDone).map((r) => (
+                        searchedDone.slice(0, visibleDone).map((r) => (
                           <tr key={r.id}>
                             <td className="dash-patient-name">{r.patient_name}</td>
                             <td>{r.program_name}</td>
-                            <td className="dash-patient-path-cell" title={r.path}>
-                              {r.path}
+                            <td
+                              className="dash-patient-path-cell"
+                              title={r.path}
+                            >
+                              {formatBenefitsDisplayPath(r.path)}
                             </td>
                             <td className="dash-patient-time">
                               {new Date(r.created_at).toLocaleString()}
@@ -1055,7 +1100,7 @@ export default function BenefitsDashboard({
                       )}
                     </tbody>
                   </table>
-                  {filtered.length > visibleDone && (
+                  {searchedDone.length > visibleDone && (
                     <div className="dash-patient-load-more">Scroll for more…</div>
                   )}
                 </div>

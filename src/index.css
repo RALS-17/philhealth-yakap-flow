@@ -5339,3 +5339,51 @@ img, svg, video {
     grid-template-columns: 1fr;
   }
 }
+
+/* Offline / local-only sync banner */
+.ben-offline-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #fff7ed;
+  border-bottom: 1px solid #fdba74;
+  color: #9a3412;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.ben-offline-dismiss {
+  border: 1px solid #fdba74;
+  background: #fff;
+  color: #9a3412;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.staff-patient-resume-hint {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #2563eb;
+  margin-top: 2px;
+}
+.dash-patient-search {
+  min-width: 200px;
+  max-width: 280px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.88rem;
+}
+.dash-patient-path-sub {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #64748b;
+  margin-top: 2px;
+  line-height: 1.3;
+}

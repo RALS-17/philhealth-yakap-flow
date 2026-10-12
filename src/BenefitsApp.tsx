@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   deleteBenefitsSession,
+  formatBenefitsDisplayPath,
   listBenefitsSessions,
   newBenefitsSessionId,
   saveBenefitsCompletion,
@@ -553,6 +554,19 @@ const PROGRAMS: ProgramDef[] = [
 
 type Screen = 'pay' | 'hmo-guide' | 'name' | 'programs' | 'steps' | 'done'
 
+function pausedStepLabel(row: BenefitsSession): string {
+  const snap = row.snapshot
+  if (!snap.programId) return 'Program selection'
+  const prog = PROGRAMS.find((x) => x.id === snap.programId)
+  const name = snap.programName || prog?.name || 'Program'
+  const total = prog?.steps?.length || 0
+  const step = (snap.stepIndex || 0) + 1
+  const stepTitle = prog?.steps?.[snap.stepIndex || 0]?.title
+  if (stepTitle) return `${name} · Step ${step}${total ? ` of ${total}` : ''}: ${stepTitle}`
+  return `${name} · Step ${step}`
+}
+
+
 /** Saved position when branching into another program (Back returns here) */
 type NavFrame = {
   programId: string
@@ -611,6 +625,7 @@ export default function BenefitsApp({
   /** When set, user is in Free Cancer Screening “How to avail” steps */
   const [cancerHowToIndex, setCancerHowToIndex] = useState<number | null>(null)
   const [navStack, setNavStack] = useState<NavFrame[]>([])
+  const [offlineBanner, setOfflineBanner] = useState<string | null>(null)
 
   useEffect(() => {
     const logoPath = `${import.meta.env.BASE_URL}global-care-logo.svg`
@@ -687,7 +702,17 @@ export default function BenefitsApp({
     }
     const t = window.setTimeout(() => {
       if (finishingRef.current) return
-      void upsertBenefitsSession(sessionId, patientName || 'Patient', getSnapshot(), siteCode)
+      void upsertBenefitsSession(sessionId, patientName || 'Patient', getSnapshot(), siteCode).then(
+        (res) => {
+          if ((res as { localOnly?: boolean }).localOnly) {
+            setOfflineBanner(
+              'Saved on this device only — will sync when online',
+            )
+          } else {
+            setOfflineBanner(null)
+          }
+        },
+      )
     }, 400)
     return () => window.clearTimeout(t)
   }, [sessionId, patientName, getSnapshot, siteCode, screen])
@@ -872,16 +897,22 @@ export default function BenefitsApp({
       setStepIndex((i) => i + 1)
       return
     }
+    // Confirm before marking Done
+    const ok = window.confirm(
+      `Finish this path for "${patientName || 'Patient'}"?\n\nProgram: ${program.name}\nThis will mark the case as Done.`,
+    )
+    if (!ok) return
+
     // Prevent double-submit (StrictMode / double click)
     if (finishingRef.current) return
     finishingRef.current = true
     try {
       const idToClear = sessionId
-      const fullPath = [...path, 'END'].join(' → ')
+      const fullPath = formatBenefitsDisplayPath([...path, 'END'])
       // Clear active session first so auto-save cannot recreate it
       setSessionId(null)
       setScreen('done')
-      await saveBenefitsCompletion({
+      const sync = await saveBenefitsCompletion({
         patient_name: patientName || 'Patient',
         program_id: program.id,
         program_name: program.name,
@@ -889,6 +920,16 @@ export default function BenefitsApp({
         site_code: siteCode,
         started_at: startedAt || undefined,
       })
+      if (sync.localOnly) {
+        setOfflineBanner(
+          sync.message || 'Saved on this device only — will sync when online',
+        )
+        setSessionMsg(
+          sync.message || 'Saved on this device only — will sync when online',
+        )
+      } else {
+        setOfflineBanner(null)
+      }
       if (idToClear) await deleteBenefitsSession(idToClear)
       await refreshPaused()
     } finally {
@@ -904,7 +945,12 @@ export default function BenefitsApp({
       return
     }
     const label = patientName || 'Patient'
-    await upsertBenefitsSession(sessionId, label, getSnapshot(), siteCode)
+    const saved = await upsertBenefitsSession(sessionId, label, getSnapshot(), siteCode)
+    if ((saved as { localOnly?: boolean }).localOnly) {
+      setOfflineBanner('Saved on this device only — will sync when online')
+    } else {
+      setOfflineBanner(null)
+    }
     await refreshPaused()
     setSessionId(null)
     setPatientName('')
@@ -976,6 +1022,14 @@ export default function BenefitsApp({
 
   return (
     <div className="app ben-app">
+      {offlineBanner && (
+        <div className="ben-offline-banner" role="status">
+          <span>{offlineBanner}</span>
+          <button type="button" className="ben-offline-dismiss" onClick={() => setOfflineBanner(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
       <header className="app-header">
         <div className="header-top">
           <div className="brand">
@@ -1126,10 +1180,8 @@ export default function BenefitsApp({
                         >
                           <td className="staff-patient-name-cell">
                             <span className="staff-patient-name">{row.patientName}</span>
-                            <span className="staff-patient-meta">
-                              {row.snapshot.programName || 'Programs list'} · step{' '}
-                              {(row.snapshot.stepIndex || 0) + 1}
-                            </span>
+                            <span className="staff-patient-meta">{pausedStepLabel(row)}</span>
+                            <span className="staff-patient-resume-hint">Continue where left off</span>
                           </td>
                           <td className="staff-patient-actions-cell">
                             <button
@@ -1140,7 +1192,7 @@ export default function BenefitsApp({
                                 resumeSession(row)
                               }}
                             >
-                              Edit
+                              Continue
                             </button>
                             <button
                               type="button"

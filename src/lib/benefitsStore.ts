@@ -5,6 +5,24 @@
 
 import { supabase, isSupabaseConfigured } from './supabase'
 
+export type SyncResult = { ok: boolean; localOnly: boolean; message?: string }
+
+/** Build a short, readable path for lists (dedupe consecutive, strip stray arrows). */
+export function formatBenefitsDisplayPath(raw: string | string[]): string {
+  const parts = (Array.isArray(raw) ? raw : raw.split('→')).map((p) =>
+    p.replace(/^[\s→]+|[\s→]+$/g, '').trim(),
+  )
+  const out: string[] = []
+  for (const p of parts) {
+    if (!p) continue
+    if (p.toUpperCase() === 'END') continue
+    if (out.length && out[out.length - 1].toLowerCase() === p.toLowerCase()) continue
+    out.push(p)
+  }
+  if (!out.length) return 'END'
+  return [...out, 'END'].join(' → ')
+}
+
 export type BenefitsSnapshot = {
   payType: 'cash' | 'hmo' | null
   patientName: string
@@ -199,13 +217,16 @@ export async function upsertBenefitsSession(
       const { error } = await supabase.from('benefits_sessions').upsert(payload, { onConflict: 'id' })
       if (error) {
         console.warn('[benefitsStore] upsertSession remote error', error.message)
+        return Object.assign(next, { localOnly: true as const, syncMessage: error.message })
       }
+      return Object.assign(next, { localOnly: false as const })
     } catch (err) {
       console.error('[benefitsStore] upsertSession failed', err)
+      return Object.assign(next, { localOnly: true as const, syncMessage: 'Network error' })
     }
   }
 
-  return next
+  return Object.assign(next, { localOnly: true as const, syncMessage: 'Supabase not configured' })
 }
 
 export async function deleteBenefitsSession(id: string): Promise<void> {
@@ -230,14 +251,15 @@ export async function saveBenefitsCompletion(payload: {
   path: string
   site_code: string
   started_at?: string
-}): Promise<boolean> {
+}): Promise<SyncResult> {
   const createdAt = new Date().toISOString()
+  const displayPath = formatBenefitsDisplayPath(payload.path)
   const row: BenefitsCompletion = {
     id: `bc-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
     patient_name: payload.patient_name,
     program_id: payload.program_id,
     program_name: payload.program_name,
-    path: payload.path,
+    path: displayPath,
     site_code: (payload.site_code || 'gcmcc').toLowerCase(),
     started_at: payload.started_at || createdAt,
     created_at: createdAt,
@@ -259,7 +281,11 @@ export async function saveBenefitsCompletion(payload: {
     if (import.meta.env.DEV) {
       console.info('[benefitsStore] Supabase not configured — local only', row)
     }
-    return !recentDup
+    return {
+      ok: true,
+      localOnly: true,
+      message: 'Saved on this device only — will sync when online',
+    }
   }
 
   try {
@@ -275,7 +301,7 @@ export async function saveBenefitsCompletion(payload: {
       .limit(1)
 
     if (existing && existing.length > 0) {
-      return true
+      return { ok: true, localOnly: false }
     }
 
     const { error } = await supabase.from('benefits_completions').insert([
@@ -291,12 +317,20 @@ export async function saveBenefitsCompletion(payload: {
 
     if (error) {
       console.error('[benefitsStore] Failed to save completion', error.message)
-      return false
+      return {
+        ok: true,
+        localOnly: true,
+        message: 'Saved on this device only — will sync when online',
+      }
     }
-    return true
+    return { ok: true, localOnly: false }
   } catch (err) {
     console.error('[benefitsStore] saveCompletion failed', err)
-    return false
+    return {
+      ok: true,
+      localOnly: true,
+      message: 'Saved on this device only — will sync when online',
+    }
   }
 }
 

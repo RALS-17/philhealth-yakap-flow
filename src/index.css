@@ -5303,3 +5303,39 @@ img, svg, video {
   font-size: 0.95rem;
   color: #0f172a;
 }
+
+/* Cancer screening type buttons — equal size */
+.ben-cancer-type-options .card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+.ben-cancer-type-options .choice-card {
+  min-height: 72px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  padding: 14px 16px;
+}
+.ben-cancer-type-options .choice-card h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+@media (max-width: 900px) {
+  .ben-cancer-type-options .card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 520px) {
+  .ben-cancer-type-options .card-grid {
+    grid-template-columns: 1fr;
+  }
+}

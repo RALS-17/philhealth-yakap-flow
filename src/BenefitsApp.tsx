@@ -553,6 +553,20 @@ const PROGRAMS: ProgramDef[] = [
 
 type Screen = 'pay' | 'hmo-guide' | 'name' | 'programs' | 'steps' | 'done'
 
+/** Saved position when branching into another program (Back returns here) */
+type NavFrame = {
+  programId: string
+  stepIndex: number
+  path: string[]
+  oecbView: 'overview' | 'tables' | 'coordination'
+  oecbTab: 'overview' | 'exclusions' | 'groups' | 'covered' | 'pathways'
+  igrEntry: 'inpatient' | 'er' | 'opd' | null
+  igrSelfConduction: 'yes' | 'no' | null
+  cancerScreenType: 'breast' | 'cervical' | 'colorectal' | 'prostate' | FreeCancerScreenId | null
+  cancerHowToIndex: number | null
+  showGamotList: null | 'picker' | '54' | '21'
+}
+
 type Props = {
   onLogout?: () => void
   staffEmail?: string
@@ -596,6 +610,7 @@ export default function BenefitsApp({
   >(null)
   /** When set, user is in Free Cancer Screening “How to avail” steps */
   const [cancerHowToIndex, setCancerHowToIndex] = useState<number | null>(null)
+  const [navStack, setNavStack] = useState<NavFrame[]>([])
 
   useEffect(() => {
     const logoPath = `${import.meta.env.BASE_URL}global-care-logo.svg`
@@ -680,6 +695,7 @@ export default function BenefitsApp({
   const startCash = () => {
     setPayType('cash')
     setPath(['Start', 'Cash'])
+    setNavStack([])
     setScreen('name')
     setSessionMsg(null)
   }
@@ -687,6 +703,7 @@ export default function BenefitsApp({
   const startHmo = () => {
     setPayType('hmo')
     setPath(['Start', 'HMO'])
+    setNavStack([])
     setScreen('hmo-guide')
     setSessionMsg(null)
   }
@@ -704,6 +721,7 @@ export default function BenefitsApp({
     setPatientName(label)
     setStartedAt(now)
     setPath(['Start', 'Cash', label])
+    setNavStack([])
     setScreen('programs')
     setSessionMsg(null)
     void upsertBenefitsSession(
@@ -722,12 +740,57 @@ export default function BenefitsApp({
     ).then(() => refreshPaused())
   }
 
-  const openProgram = (p: ProgramDef) => {
+  const captureNavFrame = (): NavFrame | null => {
+    if (!programId || screen !== 'steps') return null
+    return {
+      programId,
+      stepIndex,
+      path: [...path],
+      oecbView,
+      oecbTab,
+      igrEntry,
+      igrSelfConduction,
+      cancerScreenType,
+      cancerHowToIndex,
+      showGamotList,
+    }
+  }
+
+  const restoreNavFrame = (frame: NavFrame) => {
+    setProgramId(frame.programId)
+    setStepIndex(frame.stepIndex)
+    setPath(frame.path)
+    setOecbView(frame.oecbView)
+    setOecbTab(frame.oecbTab)
+    setIgrEntry(frame.igrEntry)
+    setIgrSelfConduction(frame.igrSelfConduction)
+    setCancerScreenType(frame.cancerScreenType)
+    setCancerHowToIndex(frame.cancerHowToIndex)
+    setShowGamotList(frame.showGamotList)
+    setScreen('steps')
+  }
+
+  /** fromList = true when picking from programs grid (clears branch stack) */
+  const openProgram = (p: ProgramDef, opts?: { fromList?: boolean }) => {
+    if (opts?.fromList) {
+      setNavStack([])
+    } else if (screen === 'steps' && programId) {
+      const frame = captureNavFrame()
+      if (frame) setNavStack((prev) => [...prev, frame])
+    }
+
     setIgrEntry(null)
     setIgrSelfConduction(null)
     setShowGamotList(null)
-    setCancerScreenType(null)
-    setCancerHowToIndex(null)
+    // Keep cancer type only if branching within cancer; otherwise clear when switching programs
+    if (p.id !== 'yakap-cancer') {
+      setCancerScreenType(null)
+      setCancerHowToIndex(null)
+    } else if (opts?.fromList) {
+      setCancerScreenType(null)
+      setCancerHowToIndex(null)
+    }
+
     setProgramId(p.id)
     setStepIndex(0)
     setPath((prev) => [...prev.filter((x) => x !== p.name), p.name])
@@ -736,6 +799,60 @@ export default function BenefitsApp({
       setOecbTab('overview')
     }
     setScreen('steps')
+  }
+
+  /** Unified Back for step screens — restores previous program when stack has frames */
+  const goBackSteps = () => {
+    // --- Inter Global internal ---
+    if (programId === 'inter-global-referral') {
+      if (stepIndex > 0) {
+        const prevTitle = activeProgramSteps[stepIndex - 1]?.title || ''
+        // Back onto Self-Conduction question → clear YES/NO so choices show again
+        if (prevTitle.startsWith('OPD/Walk-In')) {
+          setIgrSelfConduction(null)
+          setStepIndex(stepIndex - 1)
+          return
+        }
+        const next = stepIndex - 1
+        setStepIndex(next)
+        if (next === 0) {
+          setIgrEntry(null)
+          setIgrSelfConduction(null)
+        }
+        return
+      }
+      // step 0 of Inter Global → previous program (e.g. Mammogram) or programs list
+      if (navStack.length > 0) {
+        const frame = navStack[navStack.length - 1]
+        setNavStack((prev) => prev.slice(0, -1))
+        restoreNavFrame(frame)
+        return
+      }
+      setScreen('programs')
+      return
+    }
+
+    // --- Generic ---
+    if (stepIndex > 0) {
+      // Returning to cancer type picker from pathway steps
+      if (programId === 'yakap-cancer' && stepIndex === 2) {
+        setStepIndex(1)
+        setCancerScreenType(null)
+        setCancerHowToIndex(null)
+        return
+      }
+      setStepIndex((i) => i - 1)
+      return
+    }
+
+    // step 0 of any program → previous branch or programs list
+    if (navStack.length > 0) {
+      const frame = navStack[navStack.length - 1]
+      setNavStack((prev) => prev.slice(0, -1))
+      restoreNavFrame(frame)
+      return
+    }
+    setScreen('programs')
   }
 
   const nextStep = async () => {
@@ -797,6 +914,12 @@ export default function BenefitsApp({
     setPayType(null)
     setPath(['Start'])
     setStartedAt(null)
+    setNavStack([])
+    setCancerScreenType(null)
+    setCancerHowToIndex(null)
+    setIgrEntry(null)
+    setIgrSelfConduction(null)
+    setShowGamotList(null)
     setScreen('pay')
     setSessionMsg(`Paused and saved "${label}". You can resume anytime.`)
   }
@@ -811,6 +934,12 @@ export default function BenefitsApp({
     setStepIndex(snap.stepIndex || 0)
     setPath(snap.path?.length ? snap.path : ['Start', 'Cash', s.patientName])
     setStartedAt(snap.startedAt || s.createdAt)
+    setNavStack([])
+    setCancerScreenType(null)
+    setCancerHowToIndex(null)
+    setIgrEntry(null)
+    setIgrSelfConduction(null)
+    setShowGamotList(null)
     if (snap.programId) setScreen('steps')
     else setScreen('programs')
     setSessionMsg(null)
@@ -835,6 +964,12 @@ export default function BenefitsApp({
     setPayType(null)
     setPath(['Start'])
     setStartedAt(null)
+    setNavStack([])
+    setCancerScreenType(null)
+    setCancerHowToIndex(null)
+    setIgrEntry(null)
+    setIgrSelfConduction(null)
+    setShowGamotList(null)
     setScreen('pay')
     setSessionMsg(null)
   }
@@ -1091,7 +1226,7 @@ export default function BenefitsApp({
                   <button
                     type="button"
                     className="ben-program-card-main"
-                    onClick={() => openProgram(p)}
+                    onClick={() => openProgram(p, { fromList: true })}
                   >
                     <div className="icon">📋</div>
                     <h3>{p.name}</h3>
@@ -1170,7 +1305,19 @@ export default function BenefitsApp({
                   See full exclusions in OECB Tables → Exclusions.
                 </div>
                 <div className="nav-row">
-                  <button type="button" className="btn btn-outline" onClick={() => setScreen('programs')}>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => {
+                      if (navStack.length > 0) {
+                        const frame = navStack[navStack.length - 1]
+                        setNavStack((prev) => prev.slice(0, -1))
+                        restoreNavFrame(frame)
+                      } else {
+                        setScreen('programs')
+                      }
+                    }}
+                  >
                     <span>← Back</span>
                   </button>
                   <button
@@ -1553,7 +1700,7 @@ export default function BenefitsApp({
                   onClick={() => {
                     setIgrSelfConduction('yes')
                     setStepIndex((i) => i + 1)
-                    setPath((prev) => [...prev, 'Self-Conduction YES → Path B'])
+                    setPath((prev) => [...prev, 'Self-Conduction YES'])
                   }}
                 >
                   <h3>YES — Self-Conduction</h3>
@@ -1565,10 +1712,7 @@ export default function BenefitsApp({
                   onClick={() => {
                     setIgrSelfConduction('no')
                     setStepIndex((i) => i + 1)
-                    setPath((prev) => [
-                      ...prev,
-                      'Self-Conduction NO → GCMCC / Global Ambulance',
-                    ])
+                    setPath((prev) => [...prev, 'Self-Conduction NO'])
                   }}
                 >
                   <h3>NO — Ambulance / Transport Vehicle</h3>
@@ -1579,24 +1723,18 @@ export default function BenefitsApp({
 
             {program.id === 'yakap-cancer' && stepIndex === 1 && cancerHowToIndex === null && (
               <div className="ben-cancer-type-options">
-                <p className="ben-yakap-step5-label">
-                  Select screening type. Some options continue this pathway; Free Cancer Screening
-                  types show Who can avail and How to avail. Mammogram continues to Inter Global
-                  Referral after its steps.
-                </p>
                 <div className="card-grid" style={{ marginBottom: 8 }}>
                   <button
                     type="button"
                     className="choice-card"
                     onClick={() => {
                       setCancerScreenType('breast')
-                      setPath((prev) => [...prev, 'Breast → Inter Global'])
+                      setPath((prev) => [...prev, 'Breast'])
                       const igr = PROGRAMS.find((x) => x.id === 'inter-global-referral')
                       if (igr) openProgram(igr)
                     }}
                   >
                     <h3>Breast</h3>
-                    <p>Quick route → Inter Global Referral</p>
                   </button>
                   <button
                     type="button"
@@ -1608,7 +1746,6 @@ export default function BenefitsApp({
                     }}
                   >
                     <h3>Cervical</h3>
-                    <p>Continue cancer screening pathway</p>
                   </button>
                   <button
                     type="button"
@@ -1620,7 +1757,6 @@ export default function BenefitsApp({
                     }}
                   >
                     <h3>Colorectal</h3>
-                    <p>Continue cancer screening pathway</p>
                   </button>
                   <button
                     type="button"
@@ -1632,7 +1768,6 @@ export default function BenefitsApp({
                     }}
                   >
                     <h3>Prostate</h3>
-                    <p>Continue cancer screening pathway</p>
                   </button>
                   {FREE_CANCER_SCREENS.map((sc) => (
                     <button
@@ -1646,7 +1781,6 @@ export default function BenefitsApp({
                       }}
                     >
                       <h3>{sc.name}</h3>
-                      <p>{sc.short}</p>
                     </button>
                   ))}
                 </div>
@@ -1742,7 +1876,7 @@ export default function BenefitsApp({
                           }
                           // Last how-to step
                           if (sc.linkToInterGlobal) {
-                            setPath((prev) => [...prev, '→ Inter Global Referral'])
+                            setPath((prev) => [...prev, 'Inter Global Referral'])
                             const igr = PROGRAMS.find((x) => x.id === 'inter-global-referral')
                             if (igr) openProgram(igr)
                             return
@@ -1901,23 +2035,7 @@ export default function BenefitsApp({
               <button
                 type="button"
                 className="btn btn-outline"
-                onClick={() => {
-                  if (program.id === 'inter-global-referral' && stepIndex === 0) {
-                    setScreen('programs')
-                    return
-                  }
-                  if (
-                    program.id === 'inter-global-referral' &&
-                    igrEntry === 'opd' &&
-                    activeProgramSteps[stepIndex]?.title.startsWith('OPD/Walk-In')
-                  ) {
-                    setIgrSelfConduction(null)
-                    setStepIndex((i) => Math.max(0, i - 1))
-                    return
-                  }
-                  if (stepIndex > 0) setStepIndex((i) => i - 1)
-                  else setScreen('programs')
-                }}
+                onClick={goBackSteps}
               >
                 <span>← Back</span>
               </button>

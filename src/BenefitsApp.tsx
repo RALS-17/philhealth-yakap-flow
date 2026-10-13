@@ -318,7 +318,7 @@ const PROGRAMS: ProgramDef[] = [
       },
       {
         title: 'Referral / Z-Benefit Gate',
-        body: 'If confirmed malignancy or package-eligible condition, route to specialty care or open the Z Benefits Process as indicated.',
+        body: 'If confirmed malignancy or package-eligible condition, route to specialty care or open the Z Benefits Process as indicated. Optional: use the button below to open Z-Benefit (not required to finish this path).',
       },
     ],
   },
@@ -2002,6 +2002,29 @@ This will mark the case as Done.`,
                   </div>
                 )
               })()}
+
+            {program.id === 'yakap-cancer' &&
+              stepIndex === program.steps.length - 1 &&
+              cancerHowToIndex === null && (
+              <div className="ben-yakap-step5-options">
+                <p className="ben-yakap-step5-label">
+                  Optional — if the case qualifies for a Z package, open Z-Benefit. You may also
+                  finish this cancer screening path without opening Z-Benefit.
+                </p>
+                <div className="ben-yakap-step5-btns">
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => {
+                      const zb = PROGRAMS.find((x) => x.id === 'z-benefit')
+                      if (zb) openProgram(zb)
+                    }}
+                  >
+                    <span>Open Z-Benefit →</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {program.id === 'yakap-standard' && stepIndex === 4 && (
               <div className="ben-yakap-step5-options">

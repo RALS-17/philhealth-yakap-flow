@@ -57,6 +57,52 @@ function monthKey(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+function BenefitsPageSkeleton({ page }: { page: AdminPage }) {
+  return (
+    <div className="dash-content dash-skeleton benefits-page-skeleton" role="status" aria-busy="true" aria-label={`Loading ${page === 'dashboard' ? 'dashboard' : 'patient list'}`}>
+      {page === 'dashboard' ? (
+        <>
+          <section className="dash-kpi-grid" aria-label="Loading key metrics">
+            {Array.from({ length: 4 }, (_, i) => (
+              <article className="dash-kpi sk-card" key={i}>
+                <div className="dash-kpi-body sk-lines">
+                  <span className="sk-line sk-line-sm" />
+                  <span className="sk-line sk-line-lg" />
+                  <span className="sk-line sk-line-md" />
+                </div>
+              </article>
+            ))}
+          </section>
+          <section className="benefits-skeleton-panels" aria-label="Loading dashboard charts">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div className="benefits-skeleton-panel" key={i}>
+                <span className="sk-line sk-line-title" />
+                <div className="sk-bars-row">
+                  {[55, 85, 65, 95, 72].map((height, j) => (
+                    <span className="sk-bar" style={{ height: `${height}%` }} key={j} />
+                  ))}
+                </div>
+                <span className="sk-line sk-line-md" />
+              </div>
+            ))}
+          </section>
+        </>
+      ) : (
+        <section className="dash-patient-section benefits-skeleton-table" aria-label="Loading patient records">
+          <div className="benefits-skeleton-table-head">
+            {Array.from({ length: 5 }, (_, i) => <span className="sk-line sk-line-md" key={i} />)}
+          </div>
+          {Array.from({ length: 9 }, (_, i) => (
+            <div className="sk-table-row" key={i}>
+              {Array.from({ length: 5 }, (_, j) => <span className="sk-line" key={j} />)}
+            </div>
+          ))}
+        </section>
+      )}
+    </div>
+  )
+}
+
 export default function BenefitsDashboard({
   onLogout,
   adminEmail,
@@ -72,6 +118,7 @@ export default function BenefitsDashboard({
   const [rows, setRows] = useState<BenefitsCompletion[]>([])
   const [sessions, setSessions] = useState<BenefitsSession[]>([])
   const [loading, setLoading] = useState(true)
+  const [hasLoaded, setHasLoaded] = useState(false)
   const [monthCursor, setMonthCursor] = useState<Date | null>(() => startOfMonth(new Date()))
   const [progressPage, setProgressPage] = useState(0)
   const [donePage, setDonePage] = useState(0)
@@ -95,13 +142,17 @@ export default function BenefitsDashboard({
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [comp, sess] = await Promise.all([
-      fetchBenefitsCompletions(siteCode),
-      listBenefitsSessions(siteCode),
-    ])
-    setRows(comp.data)
-    setSessions(sess)
-    setLoading(false)
+    try {
+      const [comp, sess] = await Promise.all([
+        fetchBenefitsCompletions(siteCode),
+        listBenefitsSessions(siteCode),
+      ])
+      setRows(comp.data)
+      setSessions(sess)
+    } finally {
+      setLoading(false)
+      setHasLoaded(true)
+    }
   }, [siteCode])
 
   useEffect(() => {
@@ -423,6 +474,7 @@ export default function BenefitsDashboard({
           </div>
 
           <main className="dash-main">
+            {loading && !hasLoaded ? <BenefitsPageSkeleton page="dashboard" /> : (
             <div className={`dash-content${loading ? ' dash-content-refreshing' : ''}`}>
               <section className="dash-kpi-grid" aria-label="Key metrics">
                 <article className="dash-kpi dash-kpi-purple dash-card-hover" title="Total census">
@@ -923,6 +975,7 @@ export default function BenefitsDashboard({
                 </div>
               </section>
             </div>
+            )}
           </main>
         </>
       )}
@@ -1017,7 +1070,7 @@ export default function BenefitsDashboard({
           </div>
 
           <main className="dash-main dash-main-patients">
-
+            {loading && !hasLoaded ? <BenefitsPageSkeleton page="patients" /> : <>
             {patientListTab === 'ongoing' && (
               <section className="dash-patient-section">
                 <div
@@ -1134,6 +1187,7 @@ export default function BenefitsDashboard({
                 </div>
               </section>
             )}
+            </>}
           </main>        </>
       )}
     </div>

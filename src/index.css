@@ -5663,3 +5663,17 @@ img, svg, video {
   fill: #7c3aed !important;
   stroke: #7c3aed !important;
 }
+
+/* Patient status tabs share the filter toolbar, centered independently of actions. */
+.dash-toolbar-inner-patients { position: relative; }
+.dash-toolbar-inner-patients .dash-patient-tabs {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: auto; margin: 0; z-index: 1;
+}
+@media (max-width: 1180px) {
+  .dash-toolbar-inner-patients { flex-wrap: wrap; }
+  .dash-toolbar-inner-patients .dash-patient-tabs {
+    position: static; transform: none; order: 3; flex-basis: 100%;
+    justify-content: center; margin: 2px 0 0;
+  }
+}

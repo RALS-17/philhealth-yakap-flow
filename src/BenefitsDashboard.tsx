@@ -392,7 +392,6 @@ export default function BenefitsDashboard({
               </div>
               <div className="dash-toolbar-actions">
                 <div className="dash-month-filter">
-                  <span className="dash-filter-label">Period</span>
                   <select
                     className="dash-month-select"
                     value={
@@ -931,7 +930,7 @@ export default function BenefitsDashboard({
       {adminPage === 'patients' && (
         <>
           <div className="dash-toolbar">
-            <div className="dash-toolbar-inner">
+            <div className="dash-toolbar-inner dash-toolbar-inner-patients">
               <div className="dash-toolbar-title">
                 <h1>Patient List</h1>
                 <p className="dash-period-text">
@@ -942,9 +941,37 @@ export default function BenefitsDashboard({
                     : `${searchedDone.length} completed`}
                 </p>
               </div>
+              <div className="dash-patient-tabs" role="tablist" aria-label="Patient status">
+              <button
+                type="button"
+                role="tab"
+                className={patientListTab === 'ongoing' ? 'dash-patient-tab dash-patient-tab-active' : 'dash-patient-tab'}
+                aria-selected={patientListTab === 'ongoing'}
+                onClick={() => {
+                  setPatientListTab('ongoing')
+                  setProgressPage(0)
+                }}
+              >
+                Ongoing
+                <span className="dash-patient-tab-count">{searchedSessions.length}</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className={patientListTab === 'done' ? 'dash-patient-tab dash-patient-tab-active' : 'dash-patient-tab'}
+                aria-selected={patientListTab === 'done'}
+                onClick={() => {
+                  setPatientListTab('done')
+                  setDonePage(0)
+                }}
+              >
+                Done
+                <span className="dash-patient-tab-count">{searchedDone.length}</span>
+              </button>
+              </div>
+
               <div className="dash-toolbar-actions">
                 <div className="dash-month-filter">
-                  <span className="dash-filter-label">Period</span>
                   <select
                     className="dash-month-select"
                     value={
@@ -990,34 +1017,6 @@ export default function BenefitsDashboard({
           </div>
 
           <main className="dash-main dash-main-patients">
-            <div className="dash-patient-tabs" role="tablist" aria-label="Patient status">
-              <button
-                type="button"
-                role="tab"
-                className={patientListTab === 'ongoing' ? 'dash-patient-tab dash-patient-tab-active' : 'dash-patient-tab'}
-                aria-selected={patientListTab === 'ongoing'}
-                onClick={() => {
-                  setPatientListTab('ongoing')
-                  setProgressPage(0)
-                }}
-              >
-                Ongoing
-                <span className="dash-patient-tab-count">{searchedSessions.length}</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
-                className={patientListTab === 'done' ? 'dash-patient-tab dash-patient-tab-active' : 'dash-patient-tab'}
-                aria-selected={patientListTab === 'done'}
-                onClick={() => {
-                  setPatientListTab('done')
-                  setDonePage(0)
-                }}
-              >
-                Done
-                <span className="dash-patient-tab-count">{searchedDone.length}</span>
-              </button>
-            </div>
 
             {patientListTab === 'ongoing' && (
               <section className="dash-patient-section">

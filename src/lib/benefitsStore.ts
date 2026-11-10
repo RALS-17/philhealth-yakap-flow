@@ -297,6 +297,7 @@ export async function saveBenefitsCompletion(payload: {
       .eq('patient_name', row.patient_name)
       .eq('program_id', row.program_id)
       .eq('path', row.path)
+      .eq('started_at', row.started_at)
       .gte('created_at', since)
       .limit(1)
 
@@ -381,14 +382,23 @@ export async function fetchBenefitsCompletions(
       ? remote
       : readCompletionsLocal().filter((c) => !site || c.site_code === site)
 
+  // The local optimistic record and Supabase record have different IDs and
+  // created_at values. Match them by the actual flow start, not insert time.
+  const sameCompletion = (a: BenefitsCompletion, b: BenefitsCompletion) => {
+    if (a.site_code !== b.site_code || a.patient_name !== b.patient_name) return false
+    if (a.program_id !== b.program_id || a.path !== b.path) return false
+    const startA = new Date(a.started_at).getTime()
+    const startB = new Date(b.started_at).getTime()
+    if (Number.isFinite(startA) && Number.isFinite(startB)) {
+      return Math.abs(startA - startB) < 1000
+    }
+    return Math.abs(new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) < 10000
+  }
+
   if (remote.length > 0) {
     const local = readCompletionsLocal().filter((c) => !site || c.site_code === site)
-    const remoteKeys = new Set(
-      remote.map((r) => `${r.patient_name}|${r.program_id}|${r.path}|${r.created_at.slice(0, 19)}`),
-    )
     for (const c of local) {
-      const key = `${c.patient_name}|${c.program_id}|${c.path}|${c.created_at.slice(0, 19)}`
-      if (remoteKeys.has(key)) continue
+      if (remote.some((r) => sameCompletion(r, c))) continue
       if (Date.now() - new Date(c.created_at).getTime() < 120_000) {
         data = [c, ...data]
       }
@@ -397,13 +407,7 @@ export async function fetchBenefitsCompletions(
 
   const cleaned: BenefitsCompletion[] = []
   for (const c of data) {
-    const dup = cleaned.find((x) => {
-      if (x.patient_name !== c.patient_name) return false
-      if (x.program_id !== c.program_id && x.program_name !== c.program_name) return false
-      if (x.path !== c.path) return false
-      return Math.abs(new Date(x.created_at).getTime() - new Date(c.created_at).getTime()) < 10_000
-    })
-    if (!dup) cleaned.push(c)
+    if (!cleaned.some((x) => sameCompletion(x, c))) cleaned.push(c)
   }
 
   return { data: cleaned, error: remote.length === 0 ? remoteError : null }

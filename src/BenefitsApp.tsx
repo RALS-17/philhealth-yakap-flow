@@ -620,7 +620,7 @@ const PROGRAMS: ProgramDef[] = [
   },
 ]
 
-type Screen = 'pay' | 'hmo-guide' | 'name' | 'programs' | 'steps' | 'done'
+type Screen = 'pay' | 'entry-options' | 'hmo-guide' | 'name' | 'programs' | 'steps' | 'done'
 
 function pausedStepLabel(row: BenefitsSession): string {
   const snap = row.snapshot
@@ -664,6 +664,7 @@ export default function BenefitsApp({
 }: Props) {
   const [screen, setScreen] = useState<Screen>('pay')
   const [payType, setPayType] = useState<PayType>(null)
+  const [directAdmission, setDirectAdmission] = useState(false)
   const [patientName, setPatientName] = useState('')
   const [nameInput, setNameInput] = useState('')
   const [programId, setProgramId] = useState<string | null>(null)
@@ -815,7 +816,8 @@ export default function BenefitsApp({
     setPayType('cash')
     setPath(['Start', 'Cash'])
     setNavStack([])
-    setScreen('name')
+    setDirectAdmission(false)
+    setScreen('entry-options')
     setSessionMsg(null)
   }
 
@@ -823,13 +825,15 @@ export default function BenefitsApp({
     setPayType('hmo')
     setPath(['Start', 'HMO'])
     setNavStack([])
-    setScreen('hmo-guide')
+    setDirectAdmission(false)
+    setScreen('entry-options')
     setSessionMsg(null)
   }
 
   const startDirect = () => {
-    setPayType('direct')
-    setPath(['Start', 'Direct Admission'])
+    if (!payType) return
+    setDirectAdmission(true)
+    setPath(['Start', payType === 'cash' ? 'Cash' : 'HMO', 'Direct Admission'])
     setNavStack([])
     setScreen('name')
     setSessionMsg(null)
@@ -851,9 +855,9 @@ export default function BenefitsApp({
     setSessionMsg(null)
 
     // Direct Admission → name then straight into Direct Admission steps
-    if (payType === 'direct') {
+    if (directAdmission) {
       const directProg = PROGRAMS.find((x) => x.id === 'direct-admission')
-      const pathArr = ['Start', 'Direct Admission', label]
+      const pathArr = ['Start', payType === 'cash' ? 'Cash' : 'HMO', 'Direct Admission', label]
       setPath(pathArr)
       setProgramId('direct-admission')
       setStepIndex(0)
@@ -862,7 +866,7 @@ export default function BenefitsApp({
         id,
         label,
         {
-          payType: 'direct',
+          payType,
           patientName: label,
           programId: 'direct-admission',
           programName: directProg?.name || 'Direct Admission',
@@ -1011,7 +1015,7 @@ export default function BenefitsApp({
     if (programId === 'direct-admission') {
       setProgramId(null)
       setStepIndex(0)
-      setScreen('pay')
+      setScreen('entry-options')
       return
     }
     setScreen('programs')
@@ -1094,6 +1098,7 @@ This will mark the case as Done.`,
     setProgramId(null)
     setStepIndex(0)
     setPayType(null)
+    setDirectAdmission(false)
     setPath(['Start'])
     setStartedAt(null)
     setNavStack([])
@@ -1112,6 +1117,7 @@ This will mark the case as Done.`,
     setPatientName(s.patientName)
     setNameInput(s.patientName)
     setPayType(snap.payType)
+    setDirectAdmission(snap.programId === 'direct-admission')
     setProgramId(snap.programId)
     setStepIndex(snap.stepIndex || 0)
     setPath(snap.path?.length ? snap.path : ['Start', 'Cash', s.patientName])
@@ -1153,6 +1159,7 @@ This will mark the case as Done.`,
     setProgramId(null)
     setStepIndex(0)
     setPayType(null)
+    setDirectAdmission(false)
     setPath(['Start'])
     setStartedAt(null)
     setNavStack([])
@@ -1310,8 +1317,7 @@ This will mark the case as Done.`,
           <>
             <div className="section-title">Entry type</div>
             <p className="hint" style={{ marginBottom: 14 }}>
-              Cash opens benefit programs. Direct Admission enters the elective inpatient path after
-              patient name. HMO is guidance only (outside this system).
+              Select Cash or HMO first, then choose the appropriate admission pathway.
             </p>
             <div className="card-grid">
               <button type="button" className="choice-card green-card" onClick={startCash}>
@@ -1319,29 +1325,19 @@ This will mark the case as Done.`,
                 <h3>Cash</h3>
                 <p>PhilHealth benefits path</p>
                 <ul>
+                  <li>Choose benefit programs or Direct Admission</li>
                   <li>Enter patient full name</li>
-                  <li>Select benefit program</li>
                   <li>Follow program steps to end</li>
-                </ul>
-              </button>
-              <button type="button" className="choice-card" onClick={startDirect}>
-                <div className="icon">📋</div>
-                <h3>Direct Admission</h3>
-                <p>Planned inpatient pathway</p>
-                <ul>
-                  <li>Enter patient full name</li>
-                  <li>Elective procedure steps</li>
-                  <li>Billing · Clearance · Discharge</li>
                 </ul>
               </button>
               <button type="button" className="choice-card" onClick={startHmo}>
                 <div className="icon">🏥</div>
                 <h3>HMO</h3>
-                <p>Outside this system</p>
+                <p>HMO guidance or direct admission</p>
                 <ul>
                   <li>Staff guidance only</li>
                   <li>Endorse to HMO / LOA desk</li>
-                  <li>Do not open a program card</li>
+                  <li>Choose standard HMO or Direct Admission</li>
                 </ul>
               </button>
             </div>
@@ -1469,6 +1465,43 @@ This will mark the case as Done.`,
           </>
         )}
 
+        {screen === 'entry-options' && (
+          <>
+            <div className="section-title">{payType === 'cash' ? 'Cash' : 'HMO'} — choose pathway</div>
+            <p className="hint" style={{ marginBottom: 14 }}>
+              Select the appropriate pathway for this {payType === 'cash' ? 'Cash' : 'HMO'} patient.
+            </p>
+            <div className="card-grid">
+              <button
+                type="button"
+                className="choice-card green-card"
+                onClick={() => {
+                  setDirectAdmission(false)
+                  if (payType === 'hmo') setScreen('hmo-guide')
+                  else setScreen('name')
+                }}
+              >
+                <div className="icon">{payType === 'cash' ? '💵' : '🏥'}</div>
+                <h3>{payType === 'cash' ? 'Benefit Programs' : 'Standard HMO'}</h3>
+                <p>{payType === 'cash' ? 'Enter patient details and select a program' : 'HMO / LOA desk guidance'}</p>
+              </button>
+              <button type="button" className="choice-card" onClick={startDirect}>
+                <div className="icon">📋</div>
+                <h3>Direct Admission</h3>
+                <p>Planned inpatient pathway under {payType === 'cash' ? 'Cash' : 'HMO'}</p>
+                <ul>
+                  <li>Enter patient full name</li>
+                  <li>Follow elective admission steps</li>
+                  <li>Billing · Clearance · Discharge</li>
+                </ul>
+              </button>
+            </div>
+            <div className="action-row" style={{ marginTop: 16 }}>
+              <button type="button" className="btn btn-outline" onClick={newPatient}>Back to payment method</button>
+            </div>
+          </>
+        )}
+
         {screen === 'hmo-guide' && (
           <>
             <div className="section-title">HMO — staff guidance only</div>
@@ -1484,8 +1517,8 @@ This will mark the case as Done.`,
               </ul>
             </div>
             <div className="action-row">
-              <button type="button" className="btn btn-primary" onClick={newPatient}>
-                <span>Back to Cash / HMO</span>
+              <button type="button" className="btn btn-primary" onClick={() => setScreen('entry-options')}>
+                <span>Back to HMO options</span>
               </button>
             </div>
           </>
@@ -1495,8 +1528,8 @@ This will mark the case as Done.`,
           <div className="screen">
             <div className="section-title">Patient full name</div>
             <p className="hint">
-              {payType === 'direct'
-                ? 'Direct Admission — enter the patient full name to continue.'
+              {directAdmission
+                ? `${payType === 'cash' ? 'Cash' : 'HMO'} Direct Admission — enter the patient full name to continue.`
                 : 'Cash path — enter the patient full name to continue.'}
             </p>
             <form className="ben-name-simple" onSubmit={submitName}>
@@ -1513,11 +1546,11 @@ This will mark the case as Done.`,
                 required
               />
               <div className="ben-name-simple-actions">
-                <button type="button" className="btn btn-outline" onClick={newPatient}>
+                <button type="button" className="btn btn-outline" onClick={() => setScreen('entry-options')}>
                   <span>Back</span>
                 </button>
                 <button type="submit" className="btn btn-green">
-                  <span>Continue to programs</span>
+                  <span>{directAdmission ? 'Continue to Direct Admission' : 'Continue to programs'}</span>
                 </button>
               </div>
             </form>

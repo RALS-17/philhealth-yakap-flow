@@ -130,14 +130,15 @@ export default function BenefitsDashboard({
   const searchQ = listSearch.trim().toLowerCase()
 
   const searchedSessions = useMemo(() => {
-    if (!searchQ) return sessions
     return sessions.filter((s) => {
+      if (!inMonth(s.updatedAt || s.createdAt, monthCursor)) return false
+      if (!searchQ) return true
       const name = (s.patientName || '').toLowerCase()
       const prog = (s.snapshot.programName || s.snapshot.programId || '').toLowerCase()
       const path = (s.snapshot.path || []).join(' ').toLowerCase()
       return name.includes(searchQ) || prog.includes(searchQ) || path.includes(searchQ)
     })
-  }, [sessions, searchQ])
+  }, [sessions, searchQ, monthCursor])
 
   const searchedDone = useMemo(() => {
     const base = filtered
@@ -153,7 +154,7 @@ export default function BenefitsDashboard({
   useEffect(() => {
     setVisibleOngoing(LIST_BATCH)
     setVisibleDone(LIST_BATCH)
-  }, [patientListTab, searchedSessions.length, searchedDone.length, listSearch])
+  }, [patientListTab, searchedSessions.length, searchedDone.length, listSearch, monthCursor])
 
   const onTableScroll = useCallback(() => {
     const el = tableScrollRef.current
@@ -881,7 +882,6 @@ export default function BenefitsDashboard({
                           const area = `${line} L ${pts[pts.length - 1]?.x ?? 0} ${h - padY} L ${pts[0]?.x ?? 0} ${h - padY} Z`
                           return (
                             <>
-                              <path d={area} className="dash-trend-area" />
                               <path d={line} className="dash-trend-line" fill="none" />
                               {pts.map((p) => {
                                 const show = (ev: MouseEvent<SVGCircleElement>) =>
@@ -898,7 +898,7 @@ export default function BenefitsDashboard({
                                     key={p.key}
                                     cx={p.x}
                                     cy={p.y}
-                                    r="5"
+                                    r="3.5"
                                     className="dash-trend-dot"
                                     onMouseEnter={show}
                                     onMouseMove={show}
@@ -935,12 +935,41 @@ export default function BenefitsDashboard({
               <div className="dash-toolbar-title">
                 <h1>Patient List</h1>
                 <p className="dash-period-text">
+                  {monthCursor ? formatMonthLabel(monthCursor) : 'All months'}
+                  {' · '}
                   {patientListTab === 'ongoing'
-                    ? `${sessions.length} ongoing`
-                    : `${filtered.length} completed`}
+                    ? `${searchedSessions.length} ongoing`
+                    : `${searchedDone.length} completed`}
                 </p>
               </div>
               <div className="dash-toolbar-actions">
+                <div className="dash-month-filter">
+                  <span className="dash-filter-label">Period</span>
+                  <select
+                    className="dash-month-select"
+                    value={
+                      monthCursor
+                        ? `${monthCursor.getFullYear()}-${monthCursor.getMonth()}`
+                        : 'all'
+                    }
+                    onChange={(e) => {
+                      if (e.target.value === 'all') setMonthCursor(null)
+                      else {
+                        const [y, m] = e.target.value.split('-').map(Number)
+                        setMonthCursor(new Date(y, m, 1))
+                      }
+                      setVisibleOngoing(LIST_BATCH)
+                      setVisibleDone(LIST_BATCH)
+                    }}
+                  >
+                    <option value="all">All months</option>
+                    {months.map((d) => (
+                      <option key={d.toISOString()} value={`${d.getFullYear()}-${d.getMonth()}`}>
+                        {formatMonthLabel(d)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <input
                   type="search"
                   className="dash-patient-search"

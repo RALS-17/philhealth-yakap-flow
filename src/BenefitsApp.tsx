@@ -550,6 +550,74 @@ const PROGRAMS: ProgramDef[] = [
       },
     ],
   },
+  {
+    id: 'direct-admission',
+    name: 'Direct Admission',
+    short: 'Planned inpatient · Elective procedure pathway',
+    includes: [
+      'Elective / planned admission',
+      'Admitting · Coordinator · PCU Phil Benefits',
+      'OR · Monitoring · Billing · Discharge',
+    ],
+    steps: [
+      {
+        title: 'Direct Admission',
+        body: 'Patient enters via Direct Admission.',
+      },
+      {
+        title: 'Elective Procedure',
+        body: 'Planned / elective procedure pathway.',
+      },
+      {
+        title: 'Admitting section (registration)',
+        body: 'Patient registers at the Admitting section.',
+      },
+      {
+        title: 'Coordinator',
+        body: 'Case is coordinated for elective admission and procedure.',
+      },
+      {
+        title: 'PCU Phil Benefits · Fill up form · Submit Reqs',
+        body: 'PCU completes PhilHealth benefits forms and submits requirements. ER triage (vital signs) is also done as needed.',
+      },
+      {
+        title: 'ER triage (Vital Signs)',
+        body: 'Vital signs taken / ER triage as required before transfer.',
+      },
+      {
+        title: 'Transfer (room of choice)',
+        body: 'Patient is transferred to the room of choice.',
+      },
+      {
+        title: 'Scheduled OR (For Procedure)',
+        body: 'Patient proceeds to the scheduled Operating Room for the procedure.',
+      },
+      {
+        title: 'For Monitoring (1–2 days)',
+        body: 'Post-procedure monitoring for 1–2 days.',
+      },
+      {
+        title: 'Order For Discharged',
+        body: 'Physician issues the discharge order.',
+      },
+      {
+        title: 'Billing · Deduct PHIC BEN',
+        body: 'Billing prepares the account and deducts PhilHealth benefits. Choose mode of payment to continue: HMO or Cash.',
+      },
+      {
+        title: 'Payment · Cashier',
+        body: 'Settle remaining balance at Cashier (HMO with approved LOA, or Cash payment as applicable).',
+      },
+      {
+        title: 'Clearance',
+        body: 'Clearance is completed.',
+      },
+      {
+        title: 'Discharged',
+        body: 'Patient is discharged. Direct Admission pathway complete.',
+      },
+    ],
+  },
 ]
 
 type Screen = 'pay' | 'hmo-guide' | 'name' | 'programs' | 'steps' | 'done'
@@ -604,6 +672,9 @@ export default function BenefitsApp({
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [startedAt, setStartedAt] = useState<string | null>(null)
   const [paused, setPaused] = useState<BenefitsSession[]>([])
+  const [pausedSearch, setPausedSearch] = useState('')
+  const [pausedDateFrom, setPausedDateFrom] = useState('')
+  const [pausedDateTo, setPausedDateTo] = useState('')
   const [sessionMsg, setSessionMsg] = useState<string | null>(null)
   const [staffMenuOpen, setStaffMenuOpen] = useState(false)
   const finishingRef = useRef(false)
@@ -644,6 +715,24 @@ export default function BenefitsApp({
     () => PROGRAMS.find((p) => p.id === programId) ?? null,
     [programId],
   )
+
+  const filteredPaused = useMemo(() => {
+    const q = pausedSearch.trim().toLowerCase()
+    const fromMs = pausedDateFrom ? new Date(pausedDateFrom + 'T00:00:00').getTime() : null
+    const toMs = pausedDateTo ? new Date(pausedDateTo + 'T23:59:59.999').getTime() : null
+    return paused.filter((row) => {
+      if (q) {
+        const name = (row.patientName || '').toLowerCase()
+        const meta = pausedStepLabel(row).toLowerCase()
+        if (!name.includes(q) && !meta.includes(q)) return false
+      }
+      const t = new Date(row.updatedAt || row.createdAt).getTime()
+      if (fromMs !== null && Number.isFinite(fromMs) && t < fromMs) return false
+      if (toMs !== null && Number.isFinite(toMs) && t > toMs) return false
+      return true
+    })
+  }, [paused, pausedSearch, pausedDateFrom, pausedDateTo])
+
 
   /** Inter Global Referral steps filtered by entry + self-conduction branch */
   const activeProgramSteps = useMemo(() => {
@@ -738,6 +827,14 @@ export default function BenefitsApp({
     setSessionMsg(null)
   }
 
+  const startDirect = () => {
+    setPayType('direct')
+    setPath(['Start', 'Direct Admission'])
+    setNavStack([])
+    setScreen('name')
+    setSessionMsg(null)
+  }
+
   const submitName = (e: FormEvent) => {
     e.preventDefault()
     const label = nameInput.trim()
@@ -750,10 +847,39 @@ export default function BenefitsApp({
     setSessionId(id)
     setPatientName(label)
     setStartedAt(now)
-    setPath(['Start', 'Cash', label])
     setNavStack([])
-    setScreen('programs')
     setSessionMsg(null)
+
+    // Direct Admission → name then straight into Direct Admission steps
+    if (payType === 'direct') {
+      const directProg = PROGRAMS.find((x) => x.id === 'direct-admission')
+      const pathArr = ['Start', 'Direct Admission', label]
+      setPath(pathArr)
+      setProgramId('direct-admission')
+      setStepIndex(0)
+      setScreen('steps')
+      void upsertBenefitsSession(
+        id,
+        label,
+        {
+          payType: 'direct',
+          patientName: label,
+          programId: 'direct-admission',
+          programName: directProg?.name || 'Direct Admission',
+          stepIndex: 0,
+          path: pathArr,
+          startedAt: now,
+        },
+        siteCode,
+      ).then(() => refreshPaused())
+      return
+    }
+
+    // Cash → programs list
+    const pathArr = ['Start', 'Cash', label]
+    setPath(pathArr)
+    setProgramId(null)
+    setScreen('programs')
     void upsertBenefitsSession(
       id,
       label,
@@ -763,7 +889,7 @@ export default function BenefitsApp({
         programId: null,
         programName: null,
         stepIndex: 0,
-        path: ['Start', 'Cash', label],
+        path: pathArr,
         startedAt: now,
       },
       siteCode,
@@ -880,6 +1006,12 @@ export default function BenefitsApp({
       const frame = navStack[navStack.length - 1]
       setNavStack((prev) => prev.slice(0, -1))
       restoreNavFrame(frame)
+      return
+    }
+    if (programId === 'direct-admission') {
+      setProgramId(null)
+      setStepIndex(0)
+      setScreen('pay')
       return
     }
     setScreen('programs')
@@ -1176,9 +1308,10 @@ This will mark the case as Done.`,
 
         {screen === 'pay' && (
           <>
-            <div className="section-title">Payment type</div>
+            <div className="section-title">Entry type</div>
             <p className="hint" style={{ marginBottom: 14 }}>
-              Choose Cash to open PhilHealth benefit programs. HMO does not continue in this system.
+              Cash opens benefit programs. Direct Admission enters the elective inpatient path after
+              patient name. HMO is guidance only (outside this system).
             </p>
             <div className="card-grid">
               <button type="button" className="choice-card green-card" onClick={startCash}>
@@ -1189,6 +1322,16 @@ This will mark the case as Done.`,
                   <li>Enter patient full name</li>
                   <li>Select benefit program</li>
                   <li>Follow program steps to end</li>
+                </ul>
+              </button>
+              <button type="button" className="choice-card" onClick={startDirect}>
+                <div className="icon">📋</div>
+                <h3>Direct Admission</h3>
+                <p>Planned inpatient pathway</p>
+                <ul>
+                  <li>Enter patient full name</li>
+                  <li>Elective procedure steps</li>
+                  <li>Billing · Clearance · Discharge</li>
                 </ul>
               </button>
               <button type="button" className="choice-card" onClick={startHmo}>
@@ -1207,13 +1350,66 @@ This will mark the case as Done.`,
               <h3 className="session-hub-heading">
                 Paused patients
                 {paused.length > 0 && (
-                  <span className="session-count-badge">{paused.length}</span>
+                  <span className="session-count-badge">
+                    {filteredPaused.length === paused.length
+                      ? paused.length
+                      : `${filteredPaused.length}/${paused.length}`}
+                  </span>
                 )}
               </h3>
+
+              {paused.length > 0 && (
+                <div className="paused-filters">
+                  <input
+                    type="search"
+                    className="paused-search-input"
+                    placeholder="Search patient name…"
+                    value={pausedSearch}
+                    onChange={(e) => setPausedSearch(e.target.value)}
+                    aria-label="Search paused patients by name"
+                  />
+                  <div className="paused-date-filters">
+                    <label className="paused-date-label">
+                      <span>From</span>
+                      <input
+                        type="date"
+                        value={pausedDateFrom}
+                        onChange={(e) => setPausedDateFrom(e.target.value)}
+                        aria-label="Paused from date"
+                      />
+                    </label>
+                    <label className="paused-date-label">
+                      <span>To</span>
+                      <input
+                        type="date"
+                        value={pausedDateTo}
+                        onChange={(e) => setPausedDateTo(e.target.value)}
+                        aria-label="Paused to date"
+                      />
+                    </label>
+                    {(pausedSearch || pausedDateFrom || pausedDateTo) && (
+                      <button
+                        type="button"
+                        className="btn btn-outline paused-clear-filters"
+                        onClick={() => {
+                          setPausedSearch('')
+                          setPausedDateFrom('')
+                          setPausedDateTo('')
+                        }}
+                      >
+                        <span>Clear</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {paused.length === 0 ? (
                 <p className="session-empty">
                   No paused patients. Progress is kept when you Pause &amp; save.
                 </p>
+              ) : filteredPaused.length === 0 ? (
+                <p className="session-empty">No paused patients match your search or date filter.</p>
               ) : (
                 <div className="staff-patient-table-wrap">
                   <table className="staff-patient-table">
@@ -1224,7 +1420,7 @@ This will mark the case as Done.`,
                       </tr>
                     </thead>
                     <tbody>
-                      {paused.map((row) => (
+                      {filteredPaused.map((row) => (
                         <tr
                           key={row.id}
                           className="staff-patient-row"
@@ -1234,7 +1430,12 @@ This will mark the case as Done.`,
                           <td className="staff-patient-name-cell">
                             <span className="staff-patient-name">{row.patientName}</span>
                             <span className="staff-patient-meta">{pausedStepLabel(row)}</span>
-                            <span className="staff-patient-resume-hint">Continue where left off</span>
+                            <span className="staff-patient-resume-hint">
+                              Continue where left off
+                              {row.updatedAt
+                                ? ` · ${new Date(row.updatedAt).toLocaleDateString()}`
+                                : ''}
+                            </span>
                           </td>
                           <td className="staff-patient-actions-cell">
                             <button
@@ -1293,7 +1494,11 @@ This will mark the case as Done.`,
         {screen === 'name' && (
           <div className="screen">
             <div className="section-title">Patient full name</div>
-            <p className="hint">Cash path — enter the patient full name to continue.</p>
+            <p className="hint">
+              {payType === 'direct'
+                ? 'Direct Admission — enter the patient full name to continue.'
+                : 'Cash path — enter the patient full name to continue.'}
+            </p>
             <form className="ben-name-simple" onSubmit={submitName}>
               <label htmlFor="ben-name">Full name</label>
               <input
@@ -1326,7 +1531,7 @@ This will mark the case as Done.`,
               Patient: <strong>{patientName}</strong> · Cash — select a program (placeholder steps until official list is provided).
             </p>
             <div className="card-grid">
-              {PROGRAMS.map((p) => (
+              {PROGRAMS.filter((p) => p.id !== 'direct-admission').map((p) => (
                 <div key={p.id} className="choice-card ben-program-card">
                   <button
                     type="button"

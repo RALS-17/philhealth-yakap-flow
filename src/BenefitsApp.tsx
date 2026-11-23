@@ -1,14 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
+  COMPLETION_EDIT_WINDOW_MS,
+  canEditCompletion,
+  CANCEL_REASONS,
+  deleteBenefitsCompletion,
+  findSameDayRecords,
   deleteBenefitsSession,
+  extendBenefitsSession,
+  fetchRecentBenefitsCompletions,
   formatBenefitsDisplayPath,
+  formatTimeLeft,
+  isSessionExpiringSoon,
   listBenefitsSessions,
+  logBenefitsEvent,
   newBenefitsSessionId,
+  renameBenefitsCompletion,
   saveBenefitsCompletion,
+  sessionTimeLeftMs,
   upsertBenefitsSession,
+  type BenefitsCompletion,
   type BenefitsSession,
   type BenefitsSnapshot,
 } from './lib/benefitsStore'
+import SyncBadge from './SyncBadge'
 import { EGAMOT_54_BY_CATEGORY, GAMOT_21_BY_CATEGORY } from './lib/gamotLists'
 
 type PayType = 'cash' | 'hmo' | null
@@ -635,6 +649,69 @@ function pausedStepLabel(row: BenefitsSession): string {
 }
 
 
+/** Step progress bar (percent + current step title). */
+function StepProgress({
+  current,
+  total,
+  label,
+}: {
+  current: number
+  total: number
+  label?: string
+}) {
+  const safeTotal = Math.max(total, 1)
+  const safeCurrent = Math.min(Math.max(current, 1), safeTotal)
+  const pct = Math.round((safeCurrent / safeTotal) * 100)
+  return (
+    <div
+      className="ben-progress"
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={pct}
+      aria-label={`Step ${safeCurrent} of ${safeTotal}`}
+    >
+      <div className="ben-progress-head">
+        <strong>
+          Step {safeCurrent} of {safeTotal}
+        </strong>
+        <span>{pct}%</span>
+      </div>
+      <div className="ben-progress-track">
+        <div className="ben-progress-fill" style={{ width: `${pct}%` }} />
+      </div>
+      {label && <div className="ben-progress-label">{label}</div>}
+    </div>
+  )
+}
+
+/** "Recently used" programs are remembered per branch on this device. */
+const RECENT_PROGRAMS_KEY = 'gcare-benefits-recent-programs-v1'
+const RECENT_PROGRAMS_MAX = 4
+
+function readRecentPrograms(siteCode: string): string[] {
+  try {
+    const raw = localStorage.getItem(`${RECENT_PROGRAMS_KEY}-${siteCode}`)
+    const list = raw ? (JSON.parse(raw) as unknown) : []
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function rememberProgram(siteCode: string, programId: string): string[] {
+  const next = [programId, ...readRecentPrograms(siteCode).filter((x) => x !== programId)].slice(
+    0,
+    RECENT_PROGRAMS_MAX,
+  )
+  try {
+    localStorage.setItem(`${RECENT_PROGRAMS_KEY}-${siteCode}`, JSON.stringify(next))
+  } catch {
+    /* ignore */
+  }
+  return next
+}
+
 /** Saved position when branching into another program (Back returns here) */
 type NavFrame = {
   programId: string
@@ -706,6 +783,15 @@ export default function BenefitsApp({
     onConfirm: () => void | Promise<void>
   } | null>(null)
   const [infoModal, setInfoModal] = useState<string | null>(null)
+  const [cancelModal, setCancelModal] = useState<{ id: string; label: string; reason: string; note: string } | null>(null)
+  const [programSearch, setProgramSearch] = useState('')
+  const [recentIds, setRecentIds] = useState<string[]>(() => readRecentPrograms(siteCode))
+  const [recentDone, setRecentDone] = useState<BenefitsCompletion[]>([])
+  const [lastCompleted, setLastCompleted] = useState<BenefitsCompletion | null>(null)
+  const [renameModal, setRenameModal] = useState<{
+    target: BenefitsCompletion
+    value: string
+  } | null>(null)
 
   useEffect(() => {
     const logoPath = `${import.meta.env.BASE_URL}global-care-logo.svg`
@@ -787,6 +873,29 @@ export default function BenefitsApp({
     void refreshPaused()
   }, [refreshPaused])
 
+  const refreshRecentDone = useCallback(async () => {
+    setRecentDone(await fetchRecentBenefitsCompletions(siteCode))
+  }, [siteCode])
+
+  useEffect(() => {
+    if (screen === 'pay') void refreshRecentDone()
+  }, [screen, refreshRecentDone])
+
+  const expiringSoon = useMemo(() => paused.filter(isSessionExpiringSoon), [paused])
+
+  /** Resets the 15-day expiry of a paused patient. */
+  const keepSession = async (row: BenefitsSession) => {
+    await extendBenefitsSession(row)
+    await refreshPaused()
+    setSessionMsg(`Kept "${row.patientName}" for another 15 days.`)
+  }
+
+  const keepAllExpiring = async () => {
+    for (const row of expiringSoon) await extendBenefitsSession(row)
+    await refreshPaused()
+    setSessionMsg(`Kept ${expiringSoon.length} paused patient(s) for another 15 days.`)
+  }
+
   useEffect(() => {
     // Never auto-save on pay/hmo/done, or while finishing a path
     if (
@@ -846,6 +955,40 @@ export default function BenefitsApp({
       setSessionMsg('Please enter the patient full name.')
       return
     }
+    // Warn (never block) when the same patient was already started today.
+    void (async () => {
+      let hits: Awaited<ReturnType<typeof findSameDayRecords>> = []
+      try {
+        hits = await findSameDayRecords(siteCode, label, paused)
+      } catch {
+        /* the check must never stop staff from working */
+      }
+      if (!hits.length) {
+        proceedName(label)
+        return
+      }
+      const t = (iso: string) =>
+        new Date(iso).toLocaleTimeString('en-PH', { hour: 'numeric', minute: '2-digit' })
+      const lines = hits.slice(0, 4).map((h) =>
+        h.kind === 'completed'
+          ? `• Finished ${h.programName} at ${t(h.at)}${h.by ? ` (by ${h.by.split('@')[0]})` : ''}`
+          : `• Paused — ${h.programName} (last saved ${t(h.at)})`,
+      )
+      const hasPaused = hits.some((h) => h.kind === 'paused')
+      setConfirmModal({
+        title: 'Same patient already today',
+        message:
+          `"${label}" already has a record today:\n${lines.join('\n')}\n\n` +
+          (hasPaused
+            ? 'A paused case exists — you can Resume it from the list instead. Start a new one anyway?'
+            : 'Start another one anyway?'),
+        confirmLabel: 'Start anyway',
+        onConfirm: () => proceedName(label),
+      })
+    })()
+  }
+
+  const proceedName = (label: string) => {
     const id = newBenefitsSessionId()
     const now = new Date().toISOString()
     setSessionId(id)
@@ -932,6 +1075,7 @@ export default function BenefitsApp({
 
   /** fromList = true when picking from programs grid (clears branch stack) */
   const openProgram = (p: ProgramDef, opts?: { fromList?: boolean }) => {
+    setRecentIds(rememberProgram(siteCode, p.id))
     if (opts?.fromList) {
       setNavStack([])
     } else if (screen === 'steps' && programId) {
@@ -962,7 +1106,7 @@ export default function BenefitsApp({
   }
 
   /** Unified Back for step screens — restores previous program when stack has frames */
-  const goBackSteps = () => {
+  const performBackSteps = () => {
     // --- Inter Global internal ---
     if (programId === 'inter-global-referral') {
       if (stepIndex > 0) {
@@ -1021,6 +1165,30 @@ export default function BenefitsApp({
     setScreen('programs')
   }
 
+  /** Back inside a program is instant; leaving the program asks first so the place is not lost by accident. */
+  const goBackSteps = () => {
+    if (stepIndex > 0) {
+      performBackSteps()
+      return
+    }
+    const dest =
+      navStack.length > 0
+        ? 'the previous program'
+        : programId === 'direct-admission'
+          ? 'the pathway options'
+          : 'the program list'
+    setConfirmModal({
+      title: 'Leave this program?',
+      message: `Going back leaves "${program?.name ?? 'this program'}" and returns to ${dest}.
+
+Your place in this program will not be remembered. ${
+        patientName ? `"${patientName}" stays active and nothing is deleted.` : ''
+      }`,
+      confirmLabel: 'Yes, go back',
+      onConfirm: () => performBackSteps(),
+    })
+  }
+
   const nextStep = async () => {
     if (!program) return
     // OECB uses dedicated screens; Finish is only from Benefit Coordination
@@ -1063,6 +1231,16 @@ This will mark the case as Done.`,
               site_code: siteCode,
               started_at: startedAt || undefined,
             })
+            if (sync.row) setLastCompleted(sync.row)
+            logBenefitsEvent({
+              site_code: siteCode,
+              session_id: idToClear,
+              event: 'finish',
+              patient_name: patientName || 'Patient',
+              program_id: program.id,
+              program_name: program.name,
+              step_index: stepIndex,
+            })
             if (sync.localOnly) {
               const msg =
                 sync.message || 'Saved on this device only — will sync when online'
@@ -1088,6 +1266,15 @@ This will mark the case as Done.`,
     }
     const label = patientName || 'Patient'
     const saved = await upsertBenefitsSession(sessionId, label, getSnapshot(), siteCode)
+    logBenefitsEvent({
+      site_code: siteCode,
+      session_id: sessionId,
+      event: 'pause',
+      patient_name: label,
+      program_id: programId,
+      program_name: program?.name ?? null,
+      step_index: programId ? stepIndex : null,
+    })
     if ((saved as { localOnly?: boolean }).localOnly) {
       setInfoModal('Saved on this device only — will sync when online')
     }
@@ -1133,19 +1320,162 @@ This will mark the case as Done.`,
     setSessionMsg(null)
   }
 
+  /** Opens the "why is this patient being cancelled?" form. */
   const removePaused = (id: string, label: string) => {
+    setCancelModal({ id, label, reason: '', note: '' })
+  }
+
+  const confirmCancel = () => {
+    if (!cancelModal) return
+    const { id, reason, note } = cancelModal
+    if (!reason) return
+    if (reason === 'Other' && !note.trim()) return
+    setCancelModal(null)
+    void (async () => {
+      const row = paused.find((p) => p.id === id)
+      logBenefitsEvent({
+        site_code: siteCode,
+        session_id: id,
+        event: 'abandon',
+        patient_name: row?.patientName ?? cancelModal.label,
+        reason,
+        note: note.trim() || null,
+        program_id: row?.snapshot.programId ?? null,
+        program_name: row?.snapshot.programName ?? null,
+        step_index: row?.snapshot.programId ? (row.snapshot.stepIndex ?? 0) : null,
+      })
+      await deleteBenefitsSession(id)
+      if (sessionId === id) {
+        setSessionId(null)
+        setScreen('pay')
+      }
+      await refreshPaused()
+    })()
+  }
+
+  /** Correct the name on a just-finished record (30-minute window). */
+  const openRename = (c: BenefitsCompletion) => {
+    if (!canEditCompletion(c)) {
+      setInfoModal('The 30-minute edit window for this record has passed.')
+      return
+    }
+    setRenameModal({ target: c, value: c.patient_name })
+  }
+
+  const submitRename = async () => {
+    if (!renameModal) return
+    const name = renameModal.value.trim()
+    const target = renameModal.target
+    if (!name) return
+    if (!canEditCompletion(target)) {
+      setRenameModal(null)
+      setInfoModal('The 30-minute edit window for this record has passed.')
+      return
+    }
+    setRenameModal(null)
+    const res = await renameBenefitsCompletion(target, name)
+    if (!res.ok) {
+      setInfoModal(res.message || 'Could not rename this record.')
+      return
+    }
+    if (res.row) {
+      const updated = res.row
+      setLastCompleted((prev) => (prev && prev.id === target.id ? updated : prev))
+    }
+    setSessionMsg(
+      res.localOnly
+        ? res.message || 'Name changed on this device — will sync when online.'
+        : `Patient name changed to "${name}".`,
+    )
+    await refreshRecentDone()
+  }
+
+  /** Puts a just-finished record back to its last step so it can be corrected. */
+  const reopenCompletion = (c: BenefitsCompletion) => {
+    if (!canEditCompletion(c)) {
+      setInfoModal('The 30-minute edit window for this record has passed.')
+      return
+    }
+    const prog = PROGRAMS.find((x) => x.id === c.program_id)
+    if (!prog) {
+      setInfoModal('This program is no longer available, so the record cannot be reopened.')
+      return
+    }
     setConfirmModal({
-      title: 'Remove paused patient?',
-      message: `Remove paused patient "${label}"? This cannot be undone.`,
-      confirmLabel: 'Remove',
-      danger: true,
+      title: 'Reopen this record?',
+      message: `Reopen "${c.patient_name}" — ${c.program_name}?
+
+The finished record is removed and the patient goes back to the last step. Finish it again to record it.`,
+      confirmLabel: 'Reopen',
       onConfirm: () => {
         void (async () => {
-          await deleteBenefitsSession(id)
-          if (sessionId === id) {
-            setSessionId(null)
-            setScreen('pay')
+          const del = await deleteBenefitsCompletion(c)
+          if (!del.ok) {
+            setInfoModal('Could not reopen this record. Please try again.')
+            return
           }
+          const id = newBenefitsSessionId()
+          const pay: PayType = c.path.includes('HMO') ? 'hmo' : 'cash'
+          let pathArr = c.path
+            .split('→')
+            .map((x) => x.trim())
+            .filter((x) => x && x.toUpperCase() !== 'END')
+          if (!pathArr.length) {
+            pathArr = ['Start', pay === 'hmo' ? 'HMO' : 'Cash', c.patient_name, prog.name]
+          }
+          // Flows driven by on-screen choices (Inter Global, YAKAP cancer) restart at step 1.
+          const lastIdx =
+            prog.id === 'oecb'
+              ? 2
+              : prog.id === 'inter-global-referral' || prog.id === 'yakap-cancer'
+                ? 0
+                : Math.max(prog.steps.length - 1, 0)
+
+          finishingRef.current = false
+          setLastCompleted(null)
+          setSessionId(id)
+          setPatientName(c.patient_name)
+          setNameInput(c.patient_name)
+          setPayType(pay)
+          setDirectAdmission(prog.id === 'direct-admission')
+          setProgramId(prog.id)
+          setStepIndex(lastIdx)
+          setPath(pathArr)
+          setStartedAt(c.started_at)
+          setNavStack([])
+          setCancerScreenType(null)
+          setCancerHowToIndex(null)
+          setIgrEntry(null)
+          setIgrSelfConduction(null)
+          setShowGamotList(null)
+          setOecbView(prog.id === 'oecb' ? 'coordination' : 'overview')
+          setOecbTab('overview')
+          setScreen('steps')
+          setSessionMsg(`Reopened "${c.patient_name}" — finish again to record the corrected case.`)
+
+          await upsertBenefitsSession(
+            id,
+            c.patient_name,
+            {
+              payType: pay,
+              patientName: c.patient_name,
+              programId: prog.id,
+              programName: prog.name,
+              stepIndex: lastIdx,
+              path: pathArr,
+              startedAt: c.started_at,
+            },
+            siteCode,
+          )
+          logBenefitsEvent({
+            site_code: siteCode,
+            session_id: id,
+            event: 'reopen',
+            patient_name: c.patient_name,
+            program_id: prog.id,
+            program_name: prog.name,
+            step_index: lastIdx,
+          })
           await refreshPaused()
         })()
       },
@@ -1153,6 +1483,8 @@ This will mark the case as Done.`,
   }
 
   const newPatient = () => {
+    setLastCompleted(null)
+    setProgramSearch('')
     setSessionId(null)
     setPatientName('')
     setNameInput('')
@@ -1185,7 +1517,7 @@ This will mark the case as Done.`,
             onClick={(e) => e.stopPropagation()}
           >
             <h3 id="ben-confirm-title">{confirmModal.title}</h3>
-            <p className="ben-modal-message">{confirmModal.message}</p>
+            <p className="ben-modal-message" style={{ whiteSpace: 'pre-line' }}>{confirmModal.message}</p>
             <div className="ben-modal-actions">
               <button type="button" className="btn btn-outline" onClick={() => setConfirmModal(null)}>
                 <span>Cancel</span>
@@ -1222,6 +1554,98 @@ This will mark the case as Done.`,
           </div>
         </div>
       )}
+      {cancelModal && (
+        <div className="ben-modal-overlay" role="presentation" onClick={() => setCancelModal(null)}>
+          <form
+            className="ben-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ben-cancel-title"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault()
+              confirmCancel()
+            }}
+          >
+            <h3 id="ben-cancel-title">Cancel this patient?</h3>
+            <p className="ben-modal-message">
+              Remove paused patient <b>{cancelModal.label}</b>. This cannot be undone. Why is this case being cancelled?
+            </p>
+            <select
+              className="ben-rename-input ben-cancel-field"
+              value={cancelModal.reason}
+              required
+              autoFocus
+              aria-label="Reason for cancelling"
+              onChange={(e) => setCancelModal({ ...cancelModal, reason: e.target.value })}
+            >
+              <option value="">Choose a reason…</option>
+              {CANCEL_REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              className="ben-rename-input ben-cancel-field"
+              value={cancelModal.note}
+              maxLength={160}
+              required={cancelModal.reason === 'Other'}
+              placeholder={cancelModal.reason === 'Other' ? 'Please explain (required)' : 'Note (optional)'}
+              aria-label="Note"
+              onChange={(e) => setCancelModal({ ...cancelModal, note: e.target.value })}
+            />
+            <div className="ben-modal-actions">
+              <button type="button" className="btn btn-outline" onClick={() => setCancelModal(null)}>
+                <span>Keep patient</span>
+              </button>
+              <button
+                type="submit"
+                className="btn btn-outline ben-modal-danger"
+                disabled={!cancelModal.reason || (cancelModal.reason === 'Other' && !cancelModal.note.trim())}
+              >
+                <span>Cancel patient</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {renameModal && (
+        <div className="ben-modal-overlay" role="presentation" onClick={() => setRenameModal(null)}>
+          <form
+            className="ben-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ben-rename-title"
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault()
+              void submitRename()
+            }}
+          >
+            <h3 id="ben-rename-title">Edit patient name</h3>
+            <input
+              type="text"
+              className="ben-rename-input"
+              value={renameModal.value}
+              maxLength={80}
+              autoFocus
+              required
+              onChange={(e) => setRenameModal({ ...renameModal, value: e.target.value })}
+              aria-label="Patient full name"
+            />
+            <div className="ben-modal-actions">
+              <button type="button" className="btn btn-outline" onClick={() => setRenameModal(null)}>
+                <span>Cancel</span>
+              </button>
+              <button type="submit" className="btn btn-green">
+                <span>Save name</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
       <header className="app-header">
         <div className="header-top">
           <div className="brand">
@@ -1235,6 +1659,7 @@ This will mark the case as Done.`,
             </div>
           </div>
           <div className="header-staff-actions">
+            <SyncBadge />
             <div className="staff-profile">
               <button
                 type="button"
@@ -1342,6 +1767,45 @@ This will mark the case as Done.`,
               </button>
             </div>
 
+            {recentDone.filter(canEditCompletion).length > 0 && (
+              <div className="ben-recent-done" style={{ marginTop: 28 }}>
+                <h3 className="session-hub-heading">
+                  Recently completed
+                  <span className="ben-recent-note">
+                    last {COMPLETION_EDIT_WINDOW_MS / 60000} min · fix a mistake
+                  </span>
+                </h3>
+                <ul className="ben-recent-list">
+                  {recentDone.filter(canEditCompletion).map((c) => (
+                    <li key={c.id} className="ben-recent-item">
+                      <div className="ben-recent-info">
+                        <strong>{c.patient_name}</strong>
+                        <span>
+                          {c.program_name} ·{' '}
+                          {new Date(c.created_at).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+                      <div className="ben-recent-actions">
+                        <button type="button" className="staff-patient-edit" onClick={() => openRename(c)}>
+                          Edit name
+                        </button>
+                        <button
+                          type="button"
+                          className="staff-patient-keep"
+                          onClick={() => reopenCompletion(c)}
+                        >
+                          Reopen
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="session-parked-block session-parked-flat" style={{ marginTop: 28 }}>
               <h3 className="session-hub-heading">
                 Paused patients
@@ -1353,6 +1817,21 @@ This will mark the case as Done.`,
                   </span>
                 )}
               </h3>
+
+              {expiringSoon.length > 0 && (
+                <div className="ben-expiry-banner" role="alert">
+                  <div>
+                    <strong>
+                      {expiringSoon.length} paused patient{expiringSoon.length === 1 ? '' : 's'} will be
+                      removed within 2 days.
+                    </strong>
+                    <span>Continue them, or keep them for another 15 days.</span>
+                  </div>
+                  <button type="button" className="btn btn-outline" onClick={() => void keepAllExpiring()}>
+                    <span>Keep all</span>
+                  </button>
+                </div>
+              )}
 
               {paused.length > 0 && (
                 <div className="paused-filters">
@@ -1432,6 +1911,11 @@ This will mark the case as Done.`,
                                 ? ` · ${new Date(row.updatedAt).toLocaleDateString()}`
                                 : ''}
                             </span>
+                            {isSessionExpiringSoon(row) && (
+                              <span className="staff-patient-expiry">
+                                ⚠ Removed in {formatTimeLeft(sessionTimeLeftMs(row))} unless kept
+                              </span>
+                            )}
                           </td>
                           <td className="staff-patient-actions-cell">
                             <button
@@ -1444,6 +1928,18 @@ This will mark the case as Done.`,
                             >
                               Continue
                             </button>
+                            {isSessionExpiringSoon(row) && (
+                              <button
+                                type="button"
+                                className="staff-patient-keep"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  void keepSession(row)
+                                }}
+                              >
+                                Keep 15 more days
+                              </button>
+                            )}
                             <button
                               type="button"
                               className="staff-patient-delete"
@@ -1557,47 +2053,120 @@ This will mark the case as Done.`,
           </div>
         )}
 
-        {screen === 'programs' && (
-          <>
-            <div className="section-title">PhilHealth benefit programs</div>
-            <p className="hint">
-              Patient: <strong>{patientName}</strong> · Cash — select a program (placeholder steps until official list is provided).
-            </p>
-            <div className="card-grid">
-              {PROGRAMS.filter((p) => p.id !== 'direct-admission').map((p) => (
-                <div key={p.id} className="choice-card ben-program-card">
-                  <button
-                    type="button"
-                    className="ben-program-card-main"
-                    onClick={() => openProgram(p, { fromList: true })}
-                  >
-                    <div className="icon">📋</div>
-                    <h3>{p.name}</h3>
-                    <p>{p.short}</p>
-                    {p.includes && p.includes.length > 0 && (
-                      <div className="ben-program-includes">
-                        <span className="ben-program-includes-label">Includes / notes</span>
-                        <ul>
-                          {p.includes.map((item) => (
-                            <li key={item}>{item}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
+        {screen === 'programs' && (() => {
+          const q = programSearch.trim().toLowerCase()
+          const selectable = PROGRAMS.filter((p) => p.id !== 'direct-admission')
+          const matches = q
+            ? selectable.filter((p) =>
+                [p.name, p.short, ...(p.includes ?? []), ...p.steps.map((st) => st.title)]
+                  .join(' ')
+                  .toLowerCase()
+                  .includes(q),
+              )
+            : selectable
+          const recent = recentIds
+            .map((id) => selectable.find((p) => p.id === id))
+            .filter((p): p is ProgramDef => Boolean(p))
+          return (
+            <>
+              <div className="section-title">PhilHealth benefit programs</div>
+              <p className="hint">
+                Patient: <strong>{patientName}</strong> · Cash — select a program (placeholder steps until official list is provided).
+              </p>
+
+              <div className="ben-program-search">
+                <input
+                  type="search"
+                  value={programSearch}
+                  onChange={(e) => setProgramSearch(e.target.value)}
+                  placeholder="Search programs (e.g. dialysis, cancer, referral)…"
+                  aria-label="Search programs"
+                  autoFocus
+                />
+                {programSearch && (
+                  <button type="button" className="btn btn-outline" onClick={() => setProgramSearch('')}>
+                    <span>Clear</span>
                   </button>
+                )}
+              </div>
+
+              {!q && recent.length > 0 && (
+                <div className="ben-recent-programs">
+                  <span className="ben-recent-programs-label">Recently used</span>
+                  <div className="ben-recent-chips">
+                    {recent.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="ben-recent-chip"
+                        onClick={() => openProgram(p, { fromList: true })}
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
-            <div className="action-row" style={{ marginTop: 16 }}>
-              <button type="button" className="btn btn-primary" onClick={newPatient}>
-                <span>Cancel / new patient</span>
-              </button>
-            </div>
-          </>
-        )}
+              )}
+
+              {q && (
+                <p className="hint ben-search-count" role="status">
+                  {matches.length} of {selectable.length} programs match “{programSearch.trim()}”
+                </p>
+              )}
+
+              {matches.length === 0 ? (
+                <div className="info-card">
+                  <p>No program matches your search. Try a different word, or clear the search.</p>
+                </div>
+              ) : (
+                <div className="card-grid">
+                  {matches.map((p) => (
+                    <div key={p.id} className="choice-card ben-program-card">
+                      <button
+                        type="button"
+                        className="ben-program-card-main"
+                        onClick={() => openProgram(p, { fromList: true })}
+                      >
+                        <div className="icon">📋</div>
+                        <h3>{p.name}</h3>
+                        <p>{p.short}</p>
+                        {p.includes && p.includes.length > 0 && (
+                          <div className="ben-program-includes">
+                            <span className="ben-program-includes-label">Includes / notes</span>
+                            <ul>
+                              {p.includes.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="action-row" style={{ marginTop: 16 }}>
+                <button type="button" className="btn btn-primary" onClick={newPatient}>
+                  <span>Cancel / new patient</span>
+                </button>
+              </div>
+            </>
+          )
+        })()}
 
         {screen === 'steps' && program && program.id === 'oecb' && (
           <>
+            <StepProgress
+              current={oecbView === 'overview' ? 1 : oecbView === 'tables' ? 2 : 3}
+              total={3}
+              label={
+                oecbView === 'overview'
+                  ? 'Overview'
+                  : oecbView === 'tables'
+                    ? 'Coverage tables'
+                    : 'Benefit coordination'
+              }
+            />
             {oecbView === 'overview' && (
               <div className="screen">
                 <div className="result-header teal">
@@ -1651,15 +2220,7 @@ This will mark the case as Done.`,
                   <button
                     type="button"
                     className="btn btn-outline"
-                    onClick={() => {
-                      if (navStack.length > 0) {
-                        const frame = navStack[navStack.length - 1]
-                        setNavStack((prev) => prev.slice(0, -1))
-                        restoreNavFrame(frame)
-                      } else {
-                        setScreen('programs')
-                      }
-                    }}
+                    onClick={goBackSteps}
                   >
                     <span>← Back</span>
                   </button>
@@ -1947,14 +2508,11 @@ This will mark the case as Done.`,
             </div>
 
             {!(program.id === 'yakap-cancer' && cancerHowToIndex !== null) && (
-            <div className="progress-wrap" aria-hidden="true">
-              {activeProgramSteps.map((_, i) => (
-                <div
-                  key={i}
-                  className={`progress-dot${i === stepIndex ? ' active' : ''}${i < stepIndex ? ' done' : ''}`}
-                />
-              ))}
-            </div>
+              <StepProgress
+                current={stepIndex + 1}
+                total={activeProgramSteps.length}
+                label={activeProgramSteps[stepIndex]?.title}
+              />
             )}
 
             {!(program.id === 'yakap-cancer' && cancerHowToIndex !== null) && (
@@ -2432,10 +2990,27 @@ This will mark the case as Done.`,
             <div className="section-title">Program completed</div>
             <div className="info-card">
               <p>
-                <strong>{patientName}</strong> — {program?.name || 'Program'} was recorded on the
+                <strong>{lastCompleted?.patient_name ?? patientName}</strong> —{' '}
+                {lastCompleted?.program_name ?? program?.name ?? 'Program'} was recorded on the
                 Benefits dashboard (separate from the flow guide census).
               </p>
             </div>
+            {lastCompleted && canEditCompletion(lastCompleted) && (
+              <div className="ben-edit-window">
+                <p>
+                  Made a mistake? For {COMPLETION_EDIT_WINDOW_MS / 60000} minutes you can fix this
+                  record.
+                </p>
+                <div className="action-row">
+                  <button type="button" className="btn btn-outline" onClick={() => openRename(lastCompleted)}>
+                    <span>Edit patient name</span>
+                  </button>
+                  <button type="button" className="btn btn-outline" onClick={() => reopenCompletion(lastCompleted)}>
+                    <span>Reopen</span>
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="action-row" style={{ marginTop: 14 }}>
               <button type="button" className="btn btn-green" onClick={newPatient}>
                 <span>New patient</span>

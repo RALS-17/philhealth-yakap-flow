@@ -1,10 +1,29 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { ACTIVE_BRANCH } from './branchConfig'
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+// Each branch talks ONLY to its own Supabase project (its own account).
+const url = ACTIVE_BRANCH?.supabaseUrl
+const anonKey = ACTIVE_BRANCH?.supabaseAnonKey
 
-/** Null when env vars are missing — app still runs; logging is skipped. */
+/**
+ * Login tokens are kept in sessionStorage (not localStorage) so closing the tab/browser
+ * logs the user out — safer on shared hospital computers.
+ */
+const authStorage =
+  typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined'
+    ? window.sessionStorage
+    : undefined
+
+/** Null when no branch is chosen or its env vars are missing — the app shows a configuration error on the login screen. */
 export const supabase: SupabaseClient | null =
-  url && anonKey ? createClient(url, anonKey) : null
+  url && anonKey
+    ? createClient(url, anonKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          ...(authStorage ? { storage: authStorage } : {}),
+        },
+      })
+    : null
 
 export const isSupabaseConfigured = (): boolean => Boolean(url && anonKey)

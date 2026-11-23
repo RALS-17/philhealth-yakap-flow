@@ -31,3 +31,5 @@ android/captures/
 *.aab
 *.keystore
 *.jks
+
+.env

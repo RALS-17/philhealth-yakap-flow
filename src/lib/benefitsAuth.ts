@@ -1,7 +1,14 @@
 /**
- * Separate credentials for the PhilHealth Benefits Programs system.
- * Does not share session with the main flow guide auth.
+ * Real authentication for the PhilHealth Benefits Programs system (Supabase Auth).
+ *
+ * - Email + password are verified by Supabase — no passwords exist in this bundle.
+ * - The user's role and branch come from the `benefits_profiles` table, which the app
+ *   cannot write to. Row-Level Security then limits every query to that branch.
  */
+
+import { supabase } from './supabase'
+import { clearBenefitsLocalCache, flushQueue } from './benefitsStore'
+import { BRANCH_CODE, BRANCH_NAME } from './branchConfig'
 
 export type BenefitsRole = 'admin' | 'staff'
 
@@ -12,91 +19,94 @@ export type BenefitsUser = {
   siteName: string
 }
 
-const SESSION_KEY = 'gcare-benefits-auth-v1'
-const ADMIN_PW_KEY = 'gcare-benefits-admin-pw-v1'
-
-export const BENEFITS_STAFF_PASSWORD = 'benefitsStaff2026'
-export const BENEFITS_ADMIN_PASSWORD = 'benefitsAdmin2026'
-
-const SITES: Record<string, string> = {
-  gcmcc: 'Global Care Canlubang',
-  gcmcl: 'Global Care Cabuyao',
-  gcmct: 'Global Care Talisay',
-  gcmcb: 'Global Care Bay',
-  gcci: 'Global Care Cancer Institute',
+export const BENEFITS_SITES: Record<string, string> = {
+  [BRANCH_CODE]: BRANCH_NAME,
 }
 
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase()
+export type LoginResult = { ok: true; user: BenefitsUser } | { ok: false; error: string }
+
+async function loadProfile(userId: string, email: string): Promise<BenefitsUser | null> {
+  if (!supabase) return null
+  const { data, error } = await supabase
+    .from('benefits_profiles')
+    .select('role, site_code')
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (error || !data) return null
+  const role = (data as { role: string }).role
+  const siteCode = String((data as { site_code: string }).site_code || '').toLowerCase()
+  // This copy only serves its own branch: an account for any other branch is refused.
+  if ((role !== 'admin' && role !== 'staff') || siteCode !== BRANCH_CODE) return null
+  return { email, role, siteCode, siteName: BENEFITS_SITES[siteCode] }
 }
 
-function parseBenefitsEmail(email: string): { role: BenefitsRole; siteCode: string } | null {
-  const e = normalizeEmail(email)
-  const m = e.match(/^(benefitsstaff|benefitsadmin)@([a-z0-9]+)\.com$/)
-  if (!m) return null
-  const role: BenefitsRole = m[1] === 'benefitsadmin' ? 'admin' : 'staff'
-  const siteCode = m[2]
-  if (!SITES[siteCode]) return null
-  return { role, siteCode }
-}
-
-function readAdminPassword(siteCode: string): string {
+export async function loginBenefits(email: string, password: string): Promise<LoginResult> {
+  if (!supabase) {
+    return {
+      ok: false,
+      error: 'Server connection is not configured (missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).',
+    }
+  }
   try {
-    const raw = localStorage.getItem(`${ADMIN_PW_KEY}-${siteCode}`)
-    if (raw && raw.length >= 8) return raw
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    })
+    if (error || !data.user) {
+      const msg = error?.message || ''
+      if (/fetch|network/i.test(msg)) {
+        return { ok: false, error: 'Cannot reach the server. Check your internet connection.' }
+      }
+      return { ok: false, error: 'Incorrect email or password.' }
+    }
+    const user = await loadProfile(data.user.id, data.user.email ?? email.trim().toLowerCase())
+    if (!user) {
+      await supabase.auth.signOut()
+      return {
+        ok: false,
+        error: `This account is not set up for ${BRANCH_NAME}. Please contact your administrator.`,
+      }
+    }
+    void flushQueue()
+    return { ok: true, user }
+  } catch {
+    return { ok: false, error: 'Cannot reach the server. Check your internet connection.' }
+  }
+}
+
+/** Restores a still-valid login (e.g. after a page refresh). */
+export async function restoreBenefitsSession(): Promise<BenefitsUser | null> {
+  if (!supabase) return null
+  try {
+    const { data } = await supabase.auth.getSession()
+    const u = data.session?.user
+    if (!u) return null
+    return await loadProfile(u.id, u.email ?? '')
+  } catch {
+    return null
+  }
+}
+
+/** Calls back when the login ends (logout, or the refresh token is no longer valid). */
+export function onBenefitsSignedOut(cb: () => void): () => void {
+  if (!supabase) return () => {}
+  const { data } = supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT') cb()
+  })
+  return () => data.subscription.unsubscribe()
+}
+
+export async function logoutBenefits(): Promise<void> {
+  // Give unsynced work a short chance to upload before the login is removed.
+  try {
+    await Promise.race([flushQueue(), new Promise((r) => setTimeout(r, 4000))])
   } catch {
     /* ignore */
   }
-  return BENEFITS_ADMIN_PASSWORD
-}
-
-export function loginBenefits(email: string, password: string): BenefitsUser | null {
-  const parsed = parseBenefitsEmail(email)
-  if (!parsed) return null
-  const e = normalizeEmail(email)
-  const { role, siteCode } = parsed
-
-  if (role === 'admin') {
-    if (password !== readAdminPassword(siteCode)) return null
-  } else {
-    if (password !== BENEFITS_STAFF_PASSWORD) return null
-  }
-
-  const user: BenefitsUser = {
-    email: e,
-    role,
-    siteCode,
-    siteName: SITES[siteCode] || siteCode,
-  }
+  clearBenefitsLocalCache()
   try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(user))
+    await supabase?.auth.signOut()
   } catch {
     /* ignore */
   }
-  return user
-}
-
-export function getBenefitsSession(): BenefitsUser | null {
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY)
-    if (!raw) return null
-    const u = JSON.parse(raw) as BenefitsUser
-    if (u?.email && (u.role === 'admin' || u.role === 'staff') && u.siteCode) return u
-  } catch {
-    /* ignore */
-  }
-  return null
-}
-
-export function logoutBenefits(): void {
-  try {
-    sessionStorage.removeItem(SESSION_KEY)
-  } catch {
-    /* ignore */
-  }
-}
-
-/** True if email looks like a benefits-system account */
-export function isBenefitsEmail(email: string): boolean {
-  return /^benefits(staff|admin)@[a-z0-9]+\.com$/i.test(email.trim())
 }

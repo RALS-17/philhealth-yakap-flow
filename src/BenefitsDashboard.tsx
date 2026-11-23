@@ -7,13 +7,40 @@ import {
   type MouseEvent,
 } from 'react'
 import {
+  extendBenefitsSession,
   fetchBenefitsCompletions,
+  fetchBenefitsEvents,
   formatBenefitsDisplayPath,
   formatDuration,
+  formatTimeLeft,
+  isSessionExpiringSoon,
   listBenefitsSessions,
+  sessionTimeLeftMs,
   type BenefitsCompletion,
+  type BenefitsEvent,
   type BenefitsSession,
 } from './lib/benefitsStore'
+import {
+  dailyCounts,
+  formatHour,
+  formatMinutes,
+  handlingStats,
+  cancelReasons,
+  recentCancellations,
+  repeatPatients,
+  slowestCases,
+  stallPoints,
+  timingByProgram,
+  trendPct,
+  weekdayHourGrid,
+  type DaySpan,
+  type Trend,
+} from './lib/benefitsMetrics'
+import { AreaChart, Heatmap, Lollipop, OutcomeBar } from './AdminCharts'
+import SyncBadge from './SyncBadge'
+import UsersAdmin from './UsersAdmin'
+import ActivityLog from './ActivityLog'
+import Icon from './AdminIcons'
 
 type Props = {
   onLogout?: () => void
@@ -22,22 +49,38 @@ type Props = {
   siteName?: string
 }
 
-type AdminPage = 'dashboard' | 'patients'
+type AdminPage = 'dashboard' | 'patients' | 'insights' | 'activity' | 'users'
 
-const PAGE_SIZE = 5
 const LIST_BATCH = 15
 const LEGEND_SLOTS = 5
 
 const COLORS = [
-  '#3b82f6',
-  '#f59e0b',
-  '#22c55e',
-  '#94a3b8',
-  '#8b5cf6',
-  '#ec4899',
-  '#14b8a6',
-  '#ef4444',
+  '#2563eb',
+  '#0d9488',
+  '#d97706',
+  '#7c3aed',
+  '#64748b',
+  '#db2777',
+  '#16a34a',
+  '#dc2626',
 ]
+
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+function TrendChip({ t, vs }: { t: Trend; vs: string }) {
+  if (t.pct === null) {
+    return <>{t.dir === 'up' ? 'first completions' : 'no change'} vs {vs}</>
+  }
+  const arrow = t.dir === 'up' ? '▲' : t.dir === 'down' ? '▼' : '■'
+  return (
+    <>
+      <span className={`dx-trend dx-${t.dir}`}>
+        {arrow} {Math.abs(t.pct)}%
+      </span>{' '}
+      vs {vs}
+    </>
+  )
+}
 
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1)
@@ -47,20 +90,161 @@ function formatMonthLabel(d: Date) {
   return d.toLocaleString('en-US', { month: 'long', year: 'numeric' })
 }
 
-function inMonth(iso: string, month: Date | null) {
-  if (!month) return true
-  const t = new Date(iso)
-  return t.getFullYear() === month.getFullYear() && t.getMonth() === month.getMonth()
+/** What the date filter is set to: everything, one month, or a custom run of days. */
+type Period =
+  | { mode: 'all' }
+  | { mode: 'month'; month: Date }
+  | { mode: 'range'; from: string; to: string; preset: '7' | '30' | 'custom' }
+
+type Span = DaySpan
+
+const ymd = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const parseYmd = (v: string) => {
+  const [y, m, d] = v.split('-').map(Number)
+  return new Date(y, (m || 1) - 1, d || 1)
+}
+const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
+const dayDiff = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 86_400_000)
+const MAX_RANGE_DAYS = 366
+
+/** The days a period covers (end is exclusive); null for "all months". */
+function periodSpan(p: Period): Span | null {
+  if (p.mode === 'all') return null
+  if (p.mode === 'month') {
+    return {
+      start: new Date(p.month.getFullYear(), p.month.getMonth(), 1),
+      end: new Date(p.month.getFullYear(), p.month.getMonth() + 1, 1),
+    }
+  }
+  let from = parseYmd(p.from)
+  let to = parseYmd(p.to)
+  if (to < from) [from, to] = [to, from]
+  return { start: from, end: addDays(to, 1) }
 }
 
-function monthKey(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+/** The period right before this one, for comparison: last month, or the same number of days before. */
+function previousSpan(p: Period, span: Span | null): Span | null {
+  if (!span) return null
+  if (p.mode === 'month') {
+    return {
+      start: new Date(span.start.getFullYear(), span.start.getMonth() - 1, 1),
+      end: span.start,
+    }
+  }
+  const n = dayDiff(span.start, span.end)
+  return { start: addDays(span.start, -n), end: span.start }
+}
+
+function inSpan(iso: string, span: Span | null) {
+  if (!span) return true
+  const t = new Date(iso).getTime()
+  return t >= span.start.getTime() && t < span.end.getTime()
+}
+
+function spanText(s: Span) {
+  const last = addDays(s.end, -1)
+  const isMonth =
+    s.start.getDate() === 1 &&
+    s.end.getTime() === new Date(s.start.getFullYear(), s.start.getMonth() + 1, 1).getTime()
+  if (isMonth) return formatMonthLabel(s.start)
+  const sameYear = s.start.getFullYear() === last.getFullYear()
+  const f = (d: Date, y: boolean) =>
+    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(y ? { year: 'numeric' } : {}) })
+  if (dayDiff(s.start, s.end) === 1) return f(s.start, true)
+  return `${f(s.start, !sameYear)} – ${f(last, true)}`
+}
+
+function PeriodFilter({
+  period,
+  months,
+  onChange,
+}: {
+  period: Period
+  months: Date[]
+  onChange: (p: Period) => void
+}) {
+  const value =
+    period.mode === 'all'
+      ? 'all'
+      : period.mode === 'month'
+        ? `m:${period.month.getFullYear()}-${period.month.getMonth()}`
+        : period.preset === 'custom'
+          ? 'custom'
+          : `p:${period.preset}`
+
+  const pick = (v: string) => {
+    const today = new Date()
+    if (v === 'all') onChange({ mode: 'all' })
+    else if (v === 'p:7') onChange({ mode: 'range', preset: '7', from: ymd(addDays(today, -6)), to: ymd(today) })
+    else if (v === 'p:30') onChange({ mode: 'range', preset: '30', from: ymd(addDays(today, -29)), to: ymd(today) })
+    else if (v === 'custom') {
+      if (period.mode === 'range') onChange({ ...period, preset: 'custom' })
+      else {
+        const sp = periodSpan(period)
+        const from = sp ? sp.start : new Date(today.getFullYear(), today.getMonth(), 1)
+        const to = sp ? addDays(sp.end, -1) : today
+        onChange({ mode: 'range', preset: 'custom', from: ymd(from), to: ymd(to > today ? today : to) })
+      }
+    } else if (v.startsWith('m:')) {
+      const [y, m] = v.slice(2).split('-').map(Number)
+      onChange({ mode: 'month', month: new Date(y, m, 1) })
+    }
+  }
+
+  const setDate = (which: 'from' | 'to', v: string) => {
+    if (!v || period.mode !== 'range') return
+    let from = which === 'from' ? v : period.from
+    let to = which === 'to' ? v : period.to
+    if (from > to) {
+      if (which === 'from') to = from
+      else from = to
+    }
+    // keep the chart readable: at most a year at a time
+    if (dayDiff(parseYmd(from), parseYmd(to)) >= MAX_RANGE_DAYS) {
+      if (which === 'from') to = ymd(addDays(parseYmd(from), MAX_RANGE_DAYS - 1))
+      else from = ymd(addDays(parseYmd(to), -(MAX_RANGE_DAYS - 1)))
+    }
+    onChange({ mode: 'range', preset: 'custom', from, to })
+  }
+
+  return (
+    <div className="dash-month-filter dash-period-filter">
+      <select
+        className="dash-month-select"
+        aria-label="Date range"
+        value={value}
+        onChange={(e) => pick(e.target.value)}
+      >
+        <option value="all">All months</option>
+        <option value="p:7">Last 7 days</option>
+        <option value="p:30">Last 30 days</option>
+        <option value="custom">Custom range…</option>
+        {months.map((d) => (
+          <option key={d.toISOString()} value={`m:${d.getFullYear()}-${d.getMonth()}`}>
+            {formatMonthLabel(d)}
+          </option>
+        ))}
+        {period.mode === 'month' &&
+          !months.some((d) => d.getFullYear() === period.month.getFullYear() && d.getMonth() === period.month.getMonth()) && (
+            <option value={value}>{formatMonthLabel(period.month)}</option>
+          )}
+      </select>
+      {period.mode === 'range' && period.preset === 'custom' && (
+        <span className="dash-range">
+          <input type="date" aria-label="From date" value={period.from} max={period.to} onChange={(e) => setDate('from', e.target.value)} />
+          <span>to</span>
+          <input type="date" aria-label="To date" value={period.to} min={period.from} onChange={(e) => setDate('to', e.target.value)} />
+        </span>
+      )}
+    </div>
+  )
 }
 
 function BenefitsPageSkeleton({ page }: { page: AdminPage }) {
   return (
-    <div className="dash-content dash-skeleton benefits-page-skeleton" role="status" aria-busy="true" aria-label={`Loading ${page === 'dashboard' ? 'dashboard' : 'patient list'}`}>
-      {page === 'dashboard' ? (
+    <div className="dash-content dash-skeleton benefits-page-skeleton" role="status" aria-busy="true" aria-label={`Loading ${page === 'patients' ? 'patient list' : page}`}>
+      {page !== 'patients' ? (
         <>
           <section className="dash-kpi-grid" aria-label="Loading key metrics">
             {Array.from({ length: 4 }, (_, i) => (
@@ -109,6 +293,14 @@ export default function BenefitsDashboard({
   siteCode = 'gcmcc',
   siteName = 'Global Care',
 }: Props) {
+  // The dashboard page fits one screen: show as many waiting patients as the window height allows.
+  const rowsForHeight = (h: number) => (h >= 1000 ? 6 : h >= 900 ? 5 : h >= 800 ? 4 : h >= 670 ? 3 : 2)
+  const [queueRows, setQueueRows] = useState(() => rowsForHeight(typeof window === 'undefined' ? 900 : window.innerHeight))
+  useEffect(() => {
+    const onResize = () => setQueueRows(rowsForHeight(window.innerHeight))
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
   const [adminPage, setAdminPage] = useState<AdminPage>('dashboard')
   const [patientListTab, setPatientListTab] = useState<'ongoing' | 'done'>('ongoing')
   const [listSearch, setListSearch] = useState('')
@@ -117,11 +309,16 @@ export default function BenefitsDashboard({
   const tableScrollRef = useRef<HTMLDivElement>(null)
   const [rows, setRows] = useState<BenefitsCompletion[]>([])
   const [sessions, setSessions] = useState<BenefitsSession[]>([])
+  const [events, setEvents] = useState<BenefitsEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [hasLoaded, setHasLoaded] = useState(false)
-  const [monthCursor, setMonthCursor] = useState<Date | null>(() => startOfMonth(new Date()))
-  const [progressPage, setProgressPage] = useState(0)
-  const [donePage, setDonePage] = useState(0)
+  const [period, setPeriod] = useState<Period>(() => ({ mode: 'month', month: startOfMonth(new Date()) }))
+  const [compare, setCompare] = useState(true)
+  const span = useMemo(() => periodSpan(period), [period])
+  const prevSpan = useMemo(() => previousSpan(period, span), [period, span])
+  const periodLabel = span ? spanText(span) : 'All months'
+  const [, setProgressPage] = useState(0)
+  const [, setDonePage] = useState(0)
   const [profileOpen, setProfileOpen] = useState(false)
   const [hoverTip, setHoverTip] = useState<{
     name: string
@@ -143,12 +340,14 @@ export default function BenefitsDashboard({
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [comp, sess] = await Promise.all([
+      const [comp, sess, ev] = await Promise.all([
         fetchBenefitsCompletions(siteCode),
         listBenefitsSessions(siteCode),
+        fetchBenefitsEvents(siteCode),
       ])
       setRows(comp.data)
       setSessions(sess)
+      setEvents(ev.data)
     } finally {
       setLoading(false)
       setHasLoaded(true)
@@ -162,6 +361,12 @@ export default function BenefitsDashboard({
   }, [load])
 
 
+  /** Resets the 15-day expiry of a paused patient. */
+  const keepSession = async (sess: BenefitsSession) => {
+    await extendBenefitsSession(sess)
+    await load()
+  }
+
   useEffect(() => {
     if (!profileOpen) return
     const onDoc = (e: globalThis.MouseEvent) => {
@@ -174,22 +379,91 @@ export default function BenefitsDashboard({
   }, [profileOpen])
 
   const filtered = useMemo(
-    () => rows.filter((r) => inMonth(r.created_at, monthCursor)),
-    [rows, monthCursor],
+    () => rows.filter((r) => inSpan(r.created_at, span)),
+    [rows, span],
   )
 
   const searchQ = listSearch.trim().toLowerCase()
 
+  const timing = useMemo(() => timingByProgram(filtered), [filtered])
+  const monthEvents = useMemo(
+    () => events.filter((e) => inSpan(e.created_at, span)),
+    [events, span],
+  )
+  const stalls = useMemo(() => stallPoints(monthEvents), [monthEvents])
+  const reasons = useMemo(() => cancelReasons(monthEvents), [monthEvents])
+  const cancelled = useMemo(() => recentCancellations(monthEvents, 6), [monthEvents])
+  const maxReason = Math.max(1, ...reasons.map((x) => x.count))
+  const abandonCount = monthEvents.filter((e) => e.event === 'abandon').length
+  const slowest = timing[0] ?? null
+  const maxStall = Math.max(1, ...stalls.map((x) => x.total))
+  const handling = useMemo(() => handlingStats(filtered), [filtered])
+  const heatGrid = useMemo(() => weekdayHourGrid(filtered), [filtered])
+  const slow = useMemo(() => slowestCases(filtered, 5), [filtered])
+  const repeats = useMemo(() => repeatPatients(filtered), [filtered])
+  // Daily census: the chosen days (last 30 when "all"), against the period just before.
+  const chartSpan = useMemo<Span>(() => {
+    if (span) return span
+    const t = new Date()
+    const end = addDays(new Date(t.getFullYear(), t.getMonth(), t.getDate()), 1)
+    return { start: addDays(end, -30), end }
+  }, [span])
+  const chartPrev = useMemo<Span>(() => {
+    if (prevSpan) return prevSpan
+    const n = dayDiff(chartSpan.start, chartSpan.end)
+    return { start: addDays(chartSpan.start, -n), end: chartSpan.start }
+  }, [prevSpan, chartSpan])
+  const daily = useMemo(() => dailyCounts(rows, chartSpan), [rows, chartSpan])
+  const dailyPrev = useMemo(() => dailyCounts(rows, chartPrev), [rows, chartPrev])
+  const chartPoints = useMemo(
+    () =>
+      daily.map((d, i) => ({
+        label: d.label,
+        tip: d.tip,
+        value: d.count,
+        highlight: d.isToday,
+        prev: compare && dailyPrev[i] ? dailyPrev[i].count : null,
+        prevTip: dailyPrev[i]?.tip,
+      })),
+    [daily, dailyPrev, compare],
+  )
+
+  // Busiest weekday + hour slot.
+  let peakCount = 0
+  let peakLabel = '—'
+  heatGrid.forEach((row, d) =>
+    row.forEach((v, h) => {
+      if (v > peakCount) {
+        peakCount = v
+        peakLabel = `${WEEKDAYS[d]} ${formatHour(h)}`
+      }
+    }),
+  )
+
+  // Open (paused) patients, longest waiting first.
+  const waiting = useMemo(
+    () =>
+      [...sessions].sort(
+        (a, b) =>
+          new Date(a.updatedAt || a.createdAt).getTime() -
+          new Date(b.updatedAt || b.createdAt).getTime(),
+      ),
+    [sessions],
+  )
+  const staleCount = waiting.filter(
+    (x) => Date.now() - new Date(x.updatedAt || x.createdAt).getTime() > 86_400_000,
+  ).length
+
   const searchedSessions = useMemo(() => {
     return sessions.filter((s) => {
-      if (!inMonth(s.updatedAt || s.createdAt, monthCursor)) return false
+      if (!inSpan(s.updatedAt || s.createdAt, span)) return false
       if (!searchQ) return true
       const name = (s.patientName || '').toLowerCase()
       const prog = (s.snapshot.programName || s.snapshot.programId || '').toLowerCase()
       const path = (s.snapshot.path || []).join(' ').toLowerCase()
       return name.includes(searchQ) || prog.includes(searchQ) || path.includes(searchQ)
     })
-  }, [sessions, searchQ, monthCursor])
+  }, [sessions, searchQ, span])
 
   const searchedDone = useMemo(() => {
     const base = filtered
@@ -205,7 +479,7 @@ export default function BenefitsDashboard({
   useEffect(() => {
     setVisibleOngoing(LIST_BATCH)
     setVisibleDone(LIST_BATCH)
-  }, [patientListTab, searchedSessions.length, searchedDone.length, listSearch, monthCursor])
+  }, [patientListTab, searchedSessions.length, searchedDone.length, listSearch, period])
 
   const onTableScroll = useCallback(() => {
     const el = tableScrollRef.current
@@ -245,9 +519,6 @@ export default function BenefitsDashboard({
     }).length
   }, [rows, siteCode])
 
-  const top = byProgram[0]
-  const maxProg = Math.max(1, ...byProgram.map((p) => p.count), 1)
-
   const donutSegments = useMemo(() => {
     const topN = byProgram.slice(0, LEGEND_SLOTS)
     const rest = byProgram.slice(LEGEND_SLOTS)
@@ -265,60 +536,36 @@ export default function BenefitsDashboard({
     })
   }, [byProgram, total])
 
-  const pathwayShare = donutSegments
+  const prevCount = useMemo(
+    () => (prevSpan ? rows.filter((r) => inSpan(r.created_at, prevSpan)).length : 0),
+    [rows, prevSpan],
+  )
 
-  const programA = byProgram[0] ?? null
-  const programB = byProgram[1] ?? null
-  const programRest = byProgram.slice(2)
-  const programRestCount = programRest.reduce((s, e) => s + e.count, 0)
-  const programRestLabel =
-    programRest.length === 0
-      ? '—'
-      : programRest.length === 1
-        ? programRest[0].name
-        : `${programRest.length} others`
-
-  const pathwaySlots = [
-    byProgram[0] ?? null,
-    byProgram[1] ?? null,
-    byProgram[2] ?? null,
-    byProgram[3] ?? null,
-    byProgram[4] ?? null,
-  ]
-
-  const monthlyTrend = useMemo(() => {
-    const now = new Date()
-    const months: { key: string; label: string; count: number }[] = []
-    for (let i = 11; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      months.push({
-        key: monthKey(d),
-        label: d.toLocaleString('en-US', { month: 'short' }),
-        count: 0,
-      })
-    }
-    const map = new Map(months.map((m) => [m.key, m]))
-    for (const r of rows) {
-      if (siteCode && r.site_code && r.site_code !== siteCode) continue
+  const yesterdayCount = useMemo(() => {
+    const y = new Date()
+    y.setDate(y.getDate() - 1)
+    return rows.filter((r) => {
       const t = new Date(r.created_at)
-      const k = monthKey(t)
-      const m = map.get(k)
-      if (m) m.count += 1
-    }
-    return months
-  }, [rows, siteCode])
+      return (
+        t.getFullYear() === y.getFullYear() &&
+        t.getMonth() === y.getMonth() &&
+        t.getDate() === y.getDate()
+      )
+    }).length
+  }, [rows])
 
-  const maxMonth = Math.max(1, ...monthlyTrend.map((m) => m.count))
+  const monthTrend = span ? (
+    <TrendChip t={trendPct(total, prevCount)} vs={period.mode === 'month' ? 'last month' : 'previous period'} />
+  ) : (
+    <>all months</>
+  )
+  const dayTrend = <TrendChip t={trendPct(todayCount, yesterdayCount)} vs="yesterday" />
 
-  const barPrograms = byProgram.slice(0, 6)
-  const maxBar = Math.max(1, ...barPrograms.map((p) => p.count), 1)
-
-  const progressTotalPages = Math.max(1, Math.ceil(sessions.length / PAGE_SIZE))
-  const doneTotalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const progressSafe = Math.min(progressPage, progressTotalPages - 1)
-  const doneSafe = Math.min(donePage, doneTotalPages - 1)
-  const progressSlice = sessions.slice(progressSafe * PAGE_SIZE, progressSafe * PAGE_SIZE + PAGE_SIZE)
-  const doneSlice = filtered.slice(doneSafe * PAGE_SIZE, doneSafe * PAGE_SIZE + PAGE_SIZE)
+  const outcomeSegs = [
+    { label: 'Completed', value: total, color: '#1d4ed8' },
+    { label: 'In progress', value: sessions.length, color: '#d97706' },
+    { label: 'Cancelled', value: abandonCount, color: '#dc2626' },
+  ]
 
   const months = useMemo(() => {
     const set = new Set<string>()
@@ -335,7 +582,7 @@ export default function BenefitsDashboard({
   }, [rows])
 
   return (
-    <div className="dash-root">
+    <div className={`dash-root dash-v2${adminPage === 'dashboard' ? ' dx-fit' : ''}`}>
       <header className="dash-topbar">
         <div className="dash-brand">
           <img
@@ -344,7 +591,8 @@ export default function BenefitsDashboard({
             width={28}
             height={28}
           />
-          <strong>GLOBAL CARE · {locationLabel}</strong>
+          <strong>GLOBAL CARE</strong>
+          <span className="dash-brand-site">{locationLabel}</span>
         </div>
         <nav className="dash-nav" aria-label="Benefits admin">
           <button
@@ -352,17 +600,44 @@ export default function BenefitsDashboard({
             className={adminPage === 'dashboard' ? 'dash-nav-active' : undefined}
             onClick={() => setAdminPage('dashboard')}
           >
-            Dashboard
+            <Icon name="dashboard" size={16} />
+            <span>Dashboard</span>
           </button>
           <button
             type="button"
             className={adminPage === 'patients' ? 'dash-nav-active' : undefined}
             onClick={() => setAdminPage('patients')}
           >
-            Patient List
+            <Icon name="list" size={16} />
+            <span>Patient List</span>
+          </button>
+          <button
+            type="button"
+            className={adminPage === 'insights' ? 'dash-nav-active' : undefined}
+            onClick={() => setAdminPage('insights')}
+          >
+            <Icon name="insights" size={16} />
+            <span>Insights</span>
+          </button>
+          <button
+            type="button"
+            className={adminPage === 'activity' ? 'dash-nav-active' : undefined}
+            onClick={() => setAdminPage('activity')}
+          >
+            <Icon name="clock" size={16} />
+            <span>Activity</span>
+          </button>
+          <button
+            type="button"
+            className={adminPage === 'users' ? 'dash-nav-active' : undefined}
+            onClick={() => setAdminPage('users')}
+          >
+            <Icon name="users" size={16} />
+            <span>Users</span>
           </button>
         </nav>
         <div className="dash-top-right" ref={profileRef}>
+          <SyncBadge />
           <div className="dash-profile">
             <button
               type="button"
@@ -438,37 +713,12 @@ export default function BenefitsDashboard({
               <div className="dash-toolbar-title">
                 <h1>Dashboard</h1>
                 <p className="dash-period-text">
-                  {monthCursor ? formatMonthLabel(monthCursor) : 'All months'}
+                  {periodLabel}
                 </p>
               </div>
               <div className="dash-toolbar-actions">
-                <div className="dash-month-filter">
-                  <select
-                    className="dash-month-select"
-                    value={
-                      monthCursor
-                        ? `${monthCursor.getFullYear()}-${monthCursor.getMonth()}`
-                        : 'all'
-                    }
-                    onChange={(e) => {
-                      if (e.target.value === 'all') setMonthCursor(null)
-                      else {
-                        const [y, m] = e.target.value.split('-').map(Number)
-                        setMonthCursor(new Date(y, m, 1))
-                      }
-                    }}
-                  >
-                    <option value="all">All months</option>
-                    {months.map((d) => (
-                      <option key={d.toISOString()} value={`${d.getFullYear()}-${d.getMonth()}`}>
-                        {formatMonthLabel(d)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <button type="button" className="dash-btn-primary" onClick={() => void load()}>
-                  Refresh
-                </button>
+                <PeriodFilter period={period} months={months} onChange={setPeriod} />
+                <button type="button" className="dash-btn-primary" onClick={() => void load()}><Icon name="refresh" size={15} /><span>Refresh</span></button>
               </div>
             </div>
           </div>
@@ -477,46 +727,68 @@ export default function BenefitsDashboard({
             {loading && !hasLoaded ? <BenefitsPageSkeleton page="dashboard" /> : (
             <div className={`dash-content${loading ? ' dash-content-refreshing' : ''}`}>
               <section className="dash-kpi-grid" aria-label="Key metrics">
-                <article className="dash-kpi dash-kpi-purple dash-card-hover" title="Total census">
+                <article className="dash-kpi dash-kpi-purple">
+                  <span className="dash-kpi-icon" aria-hidden="true"><Icon name="users" size={20} /></span>
                   <div className="dash-kpi-body">
                     <span className="dash-kpi-label">Total census</span>
                     <strong className="dash-kpi-value">{total}</strong>
-                    <span className="dash-kpi-sub">completed programs</span>
+                    <span className="dash-kpi-sub">{monthTrend}</span>
                   </div>
                   <span className="dash-kpi-accent" aria-hidden="true" />
                 </article>
-                <article className="dash-kpi dash-kpi-blue dash-card-hover" title="Completed today">
+                <article className="dash-kpi dash-kpi-blue">
+                  <span className="dash-kpi-icon" aria-hidden="true"><Icon name="calendar" size={20} /></span>
                   <div className="dash-kpi-body">
                     <span className="dash-kpi-label">Today</span>
                     <strong className="dash-kpi-value">{todayCount}</strong>
-                    <span className="dash-kpi-sub">completed today</span>
+                    <span className="dash-kpi-sub">{dayTrend}</span>
                   </div>
                   <span className="dash-kpi-accent" aria-hidden="true" />
                 </article>
-                <article className="dash-kpi dash-kpi-peach dash-card-hover" title="Programs used">
+                <article className="dash-kpi dash-kpi-peach">
+                  <span className="dash-kpi-icon" aria-hidden="true"><Icon name="layers" size={20} /></span>
                   <div className="dash-kpi-body">
-                    <span className="dash-kpi-label">Programs used</span>
-                    <strong className="dash-kpi-value">{byProgram.length}</strong>
-                    <span className="dash-kpi-sub">different packages</span>
+                    <span className="dash-kpi-label">In progress now</span>
+                    <strong className="dash-kpi-value">{sessions.length}</strong>
+                    <span className="dash-kpi-sub"><span className={staleCount > 0 ? "dx-trend dx-down" : undefined}>{staleCount > 0 ? `${staleCount} waiting over 24h` : "none waiting long"}</span></span>
                   </div>
                   <span className="dash-kpi-accent" aria-hidden="true" />
                 </article>
-                <article className="dash-kpi dash-kpi-mint dash-card-hover" title="Top program">
+                <article className="dash-kpi dash-kpi-mint">
+                  <span className="dash-kpi-icon" aria-hidden="true"><Icon name="clock" size={20} /></span>
                   <div className="dash-kpi-body">
-                    <span className="dash-kpi-label">Top program</span>
-                    <strong className="dash-kpi-value">{top ? top.count : 0}</strong>
-                    <span className="dash-kpi-sub dash-kpi-sub-ellipsis">
-                      {top ? top.name : 'No data yet'}
-                    </span>
+                    <span className="dash-kpi-label">Median handling time</span>
+                    <strong className="dash-kpi-value">{formatMinutes(handling?.median)}</strong>
+                    <span className="dash-kpi-sub">start → finish, all programs</span>
                   </div>
                   <span className="dash-kpi-accent" aria-hidden="true" />
                 </article>
               </section>
 
-              <section className="dash-board-grid" aria-label="Dashboard panels">
-                <div className="dash-board-col">
-                  <article className="dash-card dash-card-hover">
-                    <h2>Program breakdown</h2>
+              <section className="dx-grid dx-grid-wide" aria-label="Trend and mix">
+                <article className="dash-card">
+                  <h2><Icon name="trend" size={16} />Daily census</h2>
+                  <p className="dash-card-sub dx-sub-row">
+                    <span>Completed programs per day · {span ? periodLabel : 'last 30 days'}</span>
+                    <span className="dx-compare">
+                      <label>
+                        <input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} />
+                        Compare
+                      </label>
+                      {compare && (
+                        <>
+                          <i className="dx-key dx-key-cur" />
+                          <span>{spanText(chartSpan)}</span>
+                          <i className="dx-key dx-key-prev" />
+                          <span>{spanText(chartPrev)}</span>
+                        </>
+                      )}
+                    </span>
+                  </p>
+                  <AreaChart height={0} points={chartPoints} />
+                </article>
+                <article className="dash-card dx-card-mix">
+                    <h2><Icon name="pie" size={16} />Program mix</h2>
                     <div className="dash-donut-solo">
                       {total === 0 ? (
                         <div className="dash-donut dash-donut-lg" style={{ background: '#e2e8f0' }}>
@@ -534,7 +806,7 @@ export default function BenefitsDashboard({
                             className="dash-donut-svg"
                             viewBox="0 0 120 120"
                             role="img"
-                            aria-label="Program breakdown chart"
+                            aria-label="Program mix chart"
                           >
                             {(() => {
                               const outerR = 54
@@ -654,325 +926,270 @@ export default function BenefitsDashboard({
                       </ul>
                     </div>
                   </article>
+              </section>
 
-                  <article className="dash-card dash-card-hover">
-                    <h2>By program</h2>
-                    <p className="dash-card-sub">Completed patients by benefit program</p>
-                    <div className="dash-cat-bars" onMouseLeave={() => setHoverTip(null)}>
-                      {(barPrograms.length ? barPrograms : [{ name: 'No data', count: 0 }]).map(
-                        (e) => {
-                          const pct = total > 0 ? (e.count / total) * 100 : 0
-                          const show = (ev: MouseEvent<HTMLDivElement>) =>
-                            setHoverTip({
-                              name: e.name,
-                              count: e.count,
-                              pct,
-                              color: '#7c3aed',
-                              x: ev.clientX,
-                              y: ev.clientY,
-                            })
-                          return (
-                            <div
-                              key={e.name}
-                              className="dash-cat-col"
-                              onMouseEnter={show}
-                              onMouseMove={show}
-                            >
-                              <strong className="dash-cat-val">{e.count}</strong>
-                              <div className="dash-cat-track">
-                                <div
-                                  className="dash-cat-fill"
-                                  style={{
-                                    height: `${Math.max(6, (e.count / maxBar) * 100)}%`,
-                                  }}
-                                />
-                              </div>
-                              <span className="dash-cat-label">{e.name}</span>
+              <section className="dx-grid dx-grid-even" aria-label="Queue and outcomes">
+                <article className="dash-card">
+                  <h2><Icon name="pause" size={16} />In progress now</h2>
+                  <p className="dash-card-sub">Open patients, longest waiting first</p>
+                  {waiting.length === 0 ? (
+                    <p className="dash-muted">No patients are waiting. Everything is finished.</p>
+                  ) : (
+                    <ul className="dx-queue">
+                      {waiting.slice(0, queueRows).map((sess) => {
+                        const ageMin = (Date.now() - new Date(sess.updatedAt || sess.createdAt).getTime()) / 60000
+                        const expiring = isSessionExpiringSoon(sess)
+                        return (
+                          <li key={sess.id}>
+                            <span className="dx-queue-av">{(sess.patientName || '?').trim().charAt(0).toUpperCase()}</span>
+                            <div className="dx-queue-main">
+                              <strong>{sess.patientName || 'Unnamed patient'}</strong>
+                              <span>
+                                {sess.snapshot.programName || 'Programs list'}
+                                {sess.snapshot.programName ? ` · step ${sess.snapshot.stepIndex + 1}` : ''}
+                              </span>
                             </div>
-                          )
-                        },
-                      )}
-                    </div>
-                  </article>
-                </div>
-
-                <div className="dash-board-col dash-board-col-center">
-                  <article className="dash-card dash-card-hover dash-card-entry" title="Program spotlight">
-                    <h2>Program spotlight</h2>
-                    <div className="dash-priority-grid">
-                      <div
-                        className={`dash-spot dash-spot-urgent${programA ? '' : ' dash-spot-empty'}`}
-                        onMouseEnter={(ev) =>
-                          programA &&
-                          setHoverTip({
-                            name: programA.name,
-                            count: programA.count,
-                            pct: total > 0 ? (programA.count / total) * 100 : 0,
-                            color: '#dc2626',
-                            x: ev.clientX,
-                            y: ev.clientY,
-                          })
-                        }
-                        onMouseMove={(ev) =>
-                          programA &&
-                          setHoverTip({
-                            name: programA.name,
-                            count: programA.count,
-                            pct: total > 0 ? (programA.count / total) * 100 : 0,
-                            color: '#dc2626',
-                            x: ev.clientX,
-                            y: ev.clientY,
-                          })
-                        }
-                        onMouseLeave={() => setHoverTip(null)}
-                      >
-                        <strong>{programA?.count ?? 0}</strong>
-                        <span>{programA ? programA.name : 'Top program'}</span>
-                      </div>
-                      <div
-                        className={`dash-spot dash-spot-high${programB ? '' : ' dash-spot-empty'}`}
-                        onMouseEnter={(ev) =>
-                          programB &&
-                          setHoverTip({
-                            name: programB.name,
-                            count: programB.count,
-                            pct: total > 0 ? (programB.count / total) * 100 : 0,
-                            color: '#ea580c',
-                            x: ev.clientX,
-                            y: ev.clientY,
-                          })
-                        }
-                        onMouseMove={(ev) =>
-                          programB &&
-                          setHoverTip({
-                            name: programB.name,
-                            count: programB.count,
-                            pct: total > 0 ? (programB.count / total) * 100 : 0,
-                            color: '#ea580c',
-                            x: ev.clientX,
-                            y: ev.clientY,
-                          })
-                        }
-                        onMouseLeave={() => setHoverTip(null)}
-                      >
-                        <strong>{programB?.count ?? 0}</strong>
-                        <span>{programB ? programB.name : '2nd program'}</span>
-                      </div>
-                      <div
-                        className={`dash-spot dash-spot-mid${programRest.length ? '' : ' dash-spot-empty'}`}
-                        onMouseEnter={(ev) =>
-                          programRest.length > 0 &&
-                          setHoverTip({
-                            name: programRestLabel,
-                            count: programRestCount,
-                            pct: total > 0 ? (programRestCount / total) * 100 : 0,
-                            color: '#2563eb',
-                            x: ev.clientX,
-                            y: ev.clientY,
-                          })
-                        }
-                        onMouseMove={(ev) =>
-                          programRest.length > 0 &&
-                          setHoverTip({
-                            name: programRestLabel,
-                            count: programRestCount,
-                            pct: total > 0 ? (programRestCount / total) * 100 : 0,
-                            color: '#2563eb',
-                            x: ev.clientX,
-                            y: ev.clientY,
-                          })
-                        }
-                        onMouseLeave={() => setHoverTip(null)}
-                      >
-                        <strong>{programRestCount}</strong>
-                        <span>
-                          {programRest.length
-                            ? programRest.length === 1
-                              ? programRest[0].name
-                              : 'Other programs'
-                            : 'Other programs'}
-                        </span>
-                      </div>
-                    </div>
-                  </article>
-
-                  <article className="dash-card dash-card-hover dash-card-share">
-                    <h2>Program share</h2>
-                    <p className="dash-card-sub">Top programs in this period</p>
-                    <div className="dash-stack-wrap">
-                      <div className="dash-stack-bar" role="img" aria-label="Program share">
-                        {total === 0 ? (
-                          <div className="dash-stack-empty" />
-                        ) : (
-                          pathwayShare.map((s) => {
-                            const show = (ev: MouseEvent<HTMLDivElement>) =>
-                              setHoverTip({
-                                name: s.name,
-                                count: s.count,
-                                pct: s.pct,
-                                color: s.color,
-                                x: ev.clientX,
-                                y: ev.clientY,
-                              })
-                            return (
-                              <div
-                                key={s.name}
-                                className="dash-stack-seg"
-                                style={{
-                                  width: `${Math.max(s.pct, 2)}%`,
-                                  background: s.color,
-                                }}
-                                onMouseEnter={show}
-                                onMouseMove={show}
-                                onMouseLeave={() => setHoverTip(null)}
-                              />
-                            )
-                          })
-                        )}
-                      </div>
-                      <ul className="dash-stack-legend">
-                        {pathwayShare.map((s) => (
-                          <li key={s.name}>
-                            <span
-                              className="dash-legend-dot"
-                              style={{ background: s.color }}
-                            />
-                            <span>{s.name}</span>
+                            <span className={`dx-chip${ageMin > 1440 ? ' dx-chip-warn' : ''}`} title="Time since last activity">
+                              {formatMinutes(ageMin)}
+                            </span>
+                            {expiring && (
+                              <button type="button" className="dx-keep" onClick={() => void keepSession(sess)} title={`Expires in ${formatTimeLeft(sessionTimeLeftMs(sess))}. Click to keep.`}>
+                                Keep
+                              </button>
+                            )}
                           </li>
-                        ))}
-                        {pathwayShare.length === 0 && (
-                          <li className="dash-muted">No data yet</li>
-                        )}
-                      </ul>
-                    </div>
-                  </article>
-                </div>
-
-                <div className="dash-board-col">
-                  <article className="dash-card dash-card-hover" title="Top programs">
-                    <h2>Top programs</h2>
-                    <ul className="dash-assigned">
-                      {pathwaySlots.map((f, i) =>
-                        f ? (
-                          <li
-                            key={f.name}
-                            onMouseEnter={(ev) =>
-                              setHoverTip({
-                                name: f.name,
-                                count: f.count,
-                                pct: total > 0 ? (f.count / total) * 100 : 0,
-                                color: '#7c3aed',
-                                x: ev.clientX,
-                                y: ev.clientY,
-                              })
-                            }
-                            onMouseMove={(ev) =>
-                              setHoverTip({
-                                name: f.name,
-                                count: f.count,
-                                pct: total > 0 ? (f.count / total) * 100 : 0,
-                                color: '#7c3aed',
-                                x: ev.clientX,
-                                y: ev.clientY,
-                              })
-                            }
-                            onMouseLeave={() => setHoverTip(null)}
-                          >
-                            <span className="dash-assigned-name">{f.name}</span>
-                            <div className="dash-bar-track">
-                              <div
-                                className="dash-bar-fill"
-                                style={{
-                                  width: `${Math.max(8, (f.count / maxProg) * 100)}%`,
-                                }}
-                              />
-                            </div>
-                            <strong className="dash-assigned-count">{f.count}</strong>
-                          </li>
-                        ) : (
-                          <li key={`empty-path-${i}`} className="dash-slot-empty">
-                            <span className="dash-assigned-name">—</span>
-                            <div className="dash-bar-track">
-                              <div
-                                className="dash-bar-fill dash-bar-empty"
-                                style={{ width: '8%' }}
-                              />
-                            </div>
-                            <strong className="dash-assigned-count">0</strong>
-                          </li>
-                        ),
-                      )}
+                        )
+                      })}
                     </ul>
-                  </article>
+                  )}
+                  {waiting.length > queueRows && (
+                    <button type="button" className="dx-link" onClick={() => { setPatientListTab('ongoing'); setAdminPage('patients') }}>
+                      View all {waiting.length} in Patient List →
+                    </button>
+                  )}
+                </article>
 
-                  <article className="dash-card dash-card-hover">
-                    <h2>12-month census</h2>
-                    <p className="dash-card-sub">Completed programs per month</p>
-                    <div className="dash-trend">
-                      <svg
-                        className="dash-trend-svg"
-                        viewBox="0 0 240 90"
-                        preserveAspectRatio="none"
-                      >
-                        {(() => {
-                          const w = 240
-                          const h = 90
-                          const padX = 8
-                          const padY = 12
-                          const pts = monthlyTrend.map((m, i) => {
-                            const x =
-                              padX +
-                              (i * (w - padX * 2)) / Math.max(monthlyTrend.length - 1, 1)
-                            const y =
-                              h - padY - (m.count / maxMonth) * (h - padY * 2)
-                            return { x, y, ...m }
-                          })
-                          const line = pts
-                            .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`)
-                            .join(' ')
-                          const area = `${line} L ${pts[pts.length - 1]?.x ?? 0} ${h - padY} L ${pts[0]?.x ?? 0} ${h - padY} Z`
-                          return (
-                            <>
-                              <path d={line} className="dash-trend-line" fill="none" />
-                              {pts.map((p) => {
-                                const show = (ev: MouseEvent<SVGCircleElement>) =>
-                                  setHoverTip({
-                                    name: p.label,
-                                    count: p.count,
-                                    pct: 0,
-                                    color: '#7c3aed',
-                                    x: ev.clientX,
-                                    y: ev.clientY,
-                                  })
-                                return (
-                                  <circle
-                                    key={p.key}
-                                    cx={p.x}
-                                    cy={p.y}
-                                    r="3.5"
-                                    className="dash-trend-dot"
-                                    onMouseEnter={show}
-                                    onMouseMove={show}
-                                    onMouseLeave={() => setHoverTip(null)}
-                                  />
-                                )
-                              })}
-                            </>
-                          )
-                        })()}
-                      </svg>
-                      <div className="dash-trend-labels">
-                        {monthlyTrend.map((m, i) =>
-                          i % 2 === 0 || i === monthlyTrend.length - 1 ? (
-                            <span key={m.key}>{m.label}</span>
-                          ) : (
-                            <span key={m.key} />
-                          ),
-                        )}
-                      </div>
-                    </div>
-                  </article>
-                </div>
+                <article className="dash-card">
+                  <h2><Icon name="activity" size={16} />Outcomes</h2>
+                  <p className="dash-card-sub">How cases ended · {span ? periodLabel : 'all months'}</p>
+                  <OutcomeBar segs={outcomeSegs} unit="cases" />
+                </article>
+              </section>
+            </div>
+            )}
+          </main>
+        </>
+      )}
+
+      {adminPage === 'users' && <UsersAdmin siteName={locationLabel} />}
+
+      {adminPage === 'activity' && <ActivityLog siteCode={siteCode} siteName={locationLabel} />}
+
+      {adminPage === 'insights' && (
+        <>
+          <div className="dash-toolbar">
+            <div className="dash-toolbar-inner">
+              <div className="dash-toolbar-title">
+                <h1>Insights</h1>
+                <p className="dash-period-text">
+                  {periodLabel}
+                  {' · '}
+                  {locationLabel}
+                </p>
+              </div>
+              <div className="dash-toolbar-actions">
+                <PeriodFilter period={period} months={months} onChange={setPeriod} />
+                <button
+                  type="button"
+                  className="dash-btn-primary"
+                  onClick={() => void load()}
+                ><Icon name="refresh" size={15} /><span>Refresh</span></button>
+              </div>
+            </div>
+          </div>
+
+          <main className="dash-main dash-main-insights">
+            {loading && !hasLoaded ? <BenefitsPageSkeleton page="insights" /> : (
+            <div className={`dash-content${loading ? ' dash-content-refreshing' : ''}`}>
+              <section className="dash-kpi-grid" aria-label="Insight highlights">
+                <article className="dash-kpi dash-kpi-purple">
+                  <span className="dash-kpi-icon" aria-hidden="true"><Icon name="hourglass" size={20} /></span>
+                  <div className="dash-kpi-body">
+                    <span className="dash-kpi-label">Slowest program</span>
+                    <strong className="dash-kpi-value">{slowest ? formatMinutes(slowest.medianMin) : "—"}</strong>
+                    <span className="dash-kpi-sub">{slowest ? `${slowest.program} (median)` : "No data yet"}</span>
+                  </div>
+                  <span className="dash-kpi-accent" aria-hidden="true" />
+                </article>
+                <article className="dash-kpi dash-kpi-blue">
+                  <span className="dash-kpi-icon" aria-hidden="true"><Icon name="activity" size={20} /></span>
+                  <div className="dash-kpi-body">
+                    <span className="dash-kpi-label">Busiest time</span>
+                    <strong className="dash-kpi-value">{peakLabel}</strong>
+                    <span className="dash-kpi-sub">{peakCount} completed in that slot</span>
+                  </div>
+                  <span className="dash-kpi-accent" aria-hidden="true" />
+                </article>
+                <article className="dash-kpi dash-kpi-peach">
+                  <span className="dash-kpi-icon" aria-hidden="true"><Icon name="users" size={20} /></span>
+                  <div className="dash-kpi-body">
+                    <span className="dash-kpi-label">Repeat patients</span>
+                    <strong className="dash-kpi-value">{repeats.length}</strong>
+                    <span className="dash-kpi-sub">more than one program</span>
+                  </div>
+                  <span className="dash-kpi-accent" aria-hidden="true" />
+                </article>
+                <article className="dash-kpi dash-kpi-mint">
+                  <span className="dash-kpi-icon" aria-hidden="true"><Icon name="alert" size={20} /></span>
+                  <div className="dash-kpi-body">
+                    <span className="dash-kpi-label">Most common stall</span>
+                    <strong className="dash-kpi-value">{stalls[0] ? stalls[0].total : 0}</strong>
+                    <span className="dash-kpi-sub">{stalls[0] ? stalls[0].label : "No pauses recorded"}</span>
+                  </div>
+                  <span className="dash-kpi-accent" aria-hidden="true" />
+                </article>
+              </section>
+
+              <section className="dx-grid dx-grid-even" aria-label="Insights">
+                <article className="dash-card">
+                  <h2><Icon name="clock" size={16} />Handling time per program</h2>
+                  <p className="dash-card-sub">Start → finish. The median ignores cases left paused overnight.</p>
+                  {timing.length === 0 ? (
+                    <p className="dash-muted">No completed programs in this period.</p>
+                  ) : (
+                    <Lollipop
+                      rows={timing.map((t) => ({ label: t.program, count: t.count, median: t.medianMin, avg: t.avgMin }))}
+                      format={formatMinutes}
+                    />
+                  )}
+                </article>
+
+                <article className="dash-card">
+                  <h2><Icon name="calendar" size={16} />Busiest days and hours</h2>
+                  <p className="dash-card-sub">Completed programs by weekday and hour</p>
+                  {peakCount === 0 ? (
+                    <p className="dash-muted">No completed programs in this period.</p>
+                  ) : (
+                    <Heatmap grid={heatGrid} />
+                  )}
+                </article>
+              </section>
+
+              <section className="dx-grid dx-grid-three" aria-label="Problem areas">
+                <article className="dash-card">
+                  <h2><Icon name="alert" size={16} />Where staff pause or cancel</h2>
+                  <p className="dash-card-sub">Program and step</p>
+                  {stalls.length === 0 ? (
+                    <p className="dash-muted">No paused or cancelled flows recorded in this period.</p>
+                  ) : (
+                    <ul className="dx-stall">
+                      {stalls.slice(0, 6).map((x) => (
+                        <li key={x.label}>
+                          <div className="dx-stall-head">
+                            <span>{x.label}</span>
+                            <strong>{x.total}</strong>
+                          </div>
+                          <div className="dx-stall-bar">
+                            <b className="dx-pause" style={{ width: `${(x.pauses / maxStall) * 100}%` }} title={`${x.pauses} paused`} />
+                            <b className="dx-abandon" style={{ width: `${(x.abandons / maxStall) * 100}%` }} title={`${x.abandons} cancelled`} />
+                          </div>
+                        </li>
+                      ))}
+                      <li className="dx-stall-legend"><i className="dx-pause" /> Paused <i className="dx-abandon" /> Cancelled</li>
+                    </ul>
+                  )}
+                </article>
+
+                <article className="dash-card">
+                  <h2><Icon name="hourglass" size={16} />Slowest cases</h2>
+                  <p className="dash-card-sub">Longest start → finish</p>
+                  {slow.length === 0 ? (
+                    <p className="dash-muted">No completed programs in this period.</p>
+                  ) : (
+                    <ol className="dx-rank">
+                      {slow.map((c) => (
+                        <li key={c.id}>
+                          <div>
+                            <strong>{c.patient}</strong>
+                            <span>{c.program}</span>
+                          </div>
+                          <em>{formatMinutes(c.minutes)}</em>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </article>
+
+                <article className="dash-card">
+                  <h2><Icon name="users" size={16} />Repeat patients</h2>
+                  <p className="dash-card-sub">Completed more than one program</p>
+                  {repeats.length === 0 ? (
+                    <p className="dash-muted">No repeat patients in this period.</p>
+                  ) : (
+                    <ol className="dx-rank">
+                      {repeats.slice(0, 5).map((p) => (
+                        <li key={p.name}>
+                          <div>
+                            <strong>{p.name}</strong>
+                            <span>{p.programs.join(', ')}</span>
+                          </div>
+                          <em>{p.count}×</em>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </article>
+              </section>
+
+              <section className="dx-grid dx-grid-even" aria-label="Cancellations">
+                <article className="dash-card">
+                  <h2><Icon name="alert" size={16} />Why cases are cancelled</h2>
+                  <p className="dash-card-sub">Reason picked by staff when cancelling a paused patient</p>
+                  {reasons.length === 0 ? (
+                    <p className="dash-muted">No cancelled cases in this period.</p>
+                  ) : (
+                    <ul className="dx-reasons">
+                      {reasons.map((x) => (
+                        <li key={x.reason}>
+                          <div className="dx-reason-head">
+                            <span>{x.reason}</span>
+                            <strong>{x.count}</strong>
+                          </div>
+                          <div className="dx-reason-bar">
+                            <b style={{ width: `${(x.count / maxReason) * 100}%` }} />
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </article>
+
+                <article className="dash-card">
+                  <h2><Icon name="list" size={16} />Recent cancellations</h2>
+                  <p className="dash-card-sub">Latest first</p>
+                  {cancelled.length === 0 ? (
+                    <p className="dash-muted">No cancelled cases in this period.</p>
+                  ) : (
+                    <ol className="dx-rank">
+                      {cancelled.map((c) => (
+                        <li key={c.id}>
+                          <div>
+                            <strong>{c.patient}</strong>
+                            <span>
+                              {c.program}
+                              {c.step ? ` · step ${c.step}` : ''} · {c.reason}
+                              {c.note ? ` — ${c.note}` : ''}
+                            </span>
+                          </div>
+                          <em title={c.by}>
+                            {new Date(c.at).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                            {c.by ? ` · ${c.by.split('@')[0]}` : ''}
+                          </em>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </article>
               </section>
             </div>
             )}
@@ -987,7 +1204,7 @@ export default function BenefitsDashboard({
               <div className="dash-toolbar-title">
                 <h1>Patient List</h1>
                 <p className="dash-period-text">
-                  {monthCursor ? formatMonthLabel(monthCursor) : 'All months'}
+                  {periodLabel}
                   {' · '}
                   {patientListTab === 'ongoing'
                     ? `${searchedSessions.length} ongoing`
@@ -1024,32 +1241,7 @@ export default function BenefitsDashboard({
               </div>
 
               <div className="dash-toolbar-actions">
-                <div className="dash-month-filter">
-                  <select
-                    className="dash-month-select"
-                    value={
-                      monthCursor
-                        ? `${monthCursor.getFullYear()}-${monthCursor.getMonth()}`
-                        : 'all'
-                    }
-                    onChange={(e) => {
-                      if (e.target.value === 'all') setMonthCursor(null)
-                      else {
-                        const [y, m] = e.target.value.split('-').map(Number)
-                        setMonthCursor(new Date(y, m, 1))
-                      }
-                      setVisibleOngoing(LIST_BATCH)
-                      setVisibleDone(LIST_BATCH)
-                    }}
-                  >
-                    <option value="all">All months</option>
-                    {months.map((d) => (
-                      <option key={d.toISOString()} value={`${d.getFullYear()}-${d.getMonth()}`}>
-                        {formatMonthLabel(d)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <PeriodFilter period={period} months={months} onChange={setPeriod} />
                 <input
                   type="search"
                   className="dash-patient-search"
@@ -1062,9 +1254,7 @@ export default function BenefitsDashboard({
                   }}
                   aria-label="Search patients by name or program"
                 />
-                <button type="button" className="dash-btn-primary" onClick={() => void load()}>
-                  Refresh
-                </button>
+                <button type="button" className="dash-btn-primary" onClick={() => void load()}><Icon name="refresh" size={15} /><span>Refresh</span></button>
               </div>
             </div>
           </div>
@@ -1085,13 +1275,14 @@ export default function BenefitsDashboard({
                         <th>Program / path</th>
                         <th>Started</th>
                         <th>Updated</th>
+                        <th>Expires</th>
                         <th>Status</th>
                       </tr>
                     </thead>
                     <tbody>
                       {searchedSessions.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="dash-patient-empty-line">
+                          <td colSpan={6} className="dash-patient-empty-line">
                             {searchQ ? 'No ongoing patients match your search.' : 'No ongoing patients right now.'}
                           </td>
                         </tr>
@@ -1113,6 +1304,26 @@ export default function BenefitsDashboard({
                             </td>
                             <td className="dash-patient-time">
                               {new Date(sess.updatedAt).toLocaleString()}
+                            </td>
+                            <td className="dash-patient-expiry-cell">
+                              <span
+                                className={
+                                  isSessionExpiringSoon(sess)
+                                    ? 'dash-expiry dash-expiry-soon'
+                                    : 'dash-expiry'
+                                }
+                              >
+                                {isSessionExpiringSoon(sess) ? '⚠ ' : ''}
+                                {formatTimeLeft(sessionTimeLeftMs(sess))}
+                              </span>
+                              <button
+                                type="button"
+                                className="dash-keep-btn"
+                                onClick={() => void keepSession(sess)}
+                                title="Reset the 15-day expiry"
+                              >
+                                Extend 15 days
+                              </button>
                             </td>
                             <td>
                               <span className="dash-patient-status">Ongoing</span>
@@ -1144,13 +1355,14 @@ export default function BenefitsDashboard({
                         <th>Path</th>
                         <th>Finished</th>
                         <th>Duration</th>
+                        <th>Completed by</th>
                         <th>Status</th>
                       </tr>
                     </thead>
                     <tbody>
                       {searchedDone.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="dash-patient-empty-line">
+                          <td colSpan={7} className="dash-patient-empty-line">
                             {searchQ ? 'No completed records match your search.' : 'No completed records yet.'}
                           </td>
                         </tr>
@@ -1170,6 +1382,14 @@ export default function BenefitsDashboard({
                             </td>
                             <td className="dash-patient-duration">
                               {formatDuration(r.started_at || r.created_at, r.created_at)}
+                            </td>
+                            <td className="dash-patient-by" title={r.created_by ?? ''}>
+                              {r.created_by ? r.created_by.split('@')[0] : '—'}
+                              {r.updated_by && (
+                                <small title={`${r.updated_by}${r.updated_at ? ' · ' + new Date(r.updated_at).toLocaleString() : ''}`}>
+                                  edited by {r.updated_by.split('@')[0]}
+                                </small>
+                              )}
                             </td>
                             <td>
                               <span className="dash-patient-status dash-patient-status-done">

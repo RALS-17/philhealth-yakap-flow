@@ -7275,3 +7275,14 @@ img, svg, video {
   .paused-program-label { flex: 1 1 100%; }
   .paused-program-select { max-width: none; width: 100%; }
 }
+
+/* v3.6: waiting time + progress tags on the staff paused list */
+.staff-patient-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+.spt-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; background: #eef2f7; color: #475569; white-space: nowrap; }
+.spt-benefit { background: #e0e7ff; color: #3730a3; }
+.spt-progress { background: #dcfce7; color: #166534; }
+.spt-bar { display: inline-block; width: 42px; height: 6px; border-radius: 3px; background: rgba(22, 101, 52, 0.18); overflow: hidden; }
+.spt-bar b { display: block; height: 100%; background: #16a34a; border-radius: 3px; }
+.spt-wait { background: #eef2f7; color: #475569; }
+.spt-wait-mid { background: #fef3c7; color: #92400e; }
+.spt-wait-high { background: #fee2e2; color: #991b1b; }

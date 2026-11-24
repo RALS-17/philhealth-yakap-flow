@@ -636,6 +636,30 @@ const PROGRAMS: ProgramDef[] = [
 
 type Screen = 'pay' | 'entry-options' | 'hmo-guide' | 'name' | 'programs' | 'steps' | 'done'
 
+/** How far along a paused patient is, as steps done out of the program's steps. */
+function pausedProgress(row: BenefitsSession): { pct: number; done: number; total: number; benefit: string | null } {
+  const snap = row.snapshot
+  const prog = snap.programId ? PROGRAMS.find((x) => x.id === snap.programId) : undefined
+  const total = prog?.steps?.length || 0
+  if (!snap.programId || !total) {
+    return { pct: 0, done: 0, total, benefit: snap.programName || prog?.name || null }
+  }
+  const done = Math.max(0, Math.min(total, snap.stepIndex || 0))
+  return { pct: Math.round((done / total) * 100), done, total, benefit: snap.programName || prog?.name || null }
+}
+
+/** Total time since the patient's process started, e.g. "2d 5h" or "45m". */
+function waitingSince(row: BenefitsSession): { label: string; days: number; startedLabel: string } {
+  const startIso = row.snapshot.startedAt || row.createdAt
+  const t = new Date(startIso).getTime()
+  if (!Number.isFinite(t)) return { label: '—', days: 0, startedLabel: '' }
+  const mins = Math.max(0, Math.floor((Date.now() - t) / 60000))
+  const d = Math.floor(mins / 1440)
+  const h = Math.floor((mins % 1440) / 60)
+  const label = d > 0 ? (h > 0 ? `${d}d ${h}h` : `${d}d`) : h > 0 ? `${h}h ${mins % 60}m` : `${mins}m`
+  return { label, days: d, startedLabel: new Date(t).toLocaleString() }
+}
+
 function pausedStepLabel(row: BenefitsSession): string {
   const snap = row.snapshot
   if (!snap.programId) return 'Program selection'
@@ -1950,6 +1974,30 @@ The finished record is removed and the patient goes back to the last step. Finis
                           <td className="staff-patient-name-cell">
                             <span className="staff-patient-name">{row.patientName}</span>
                             <span className="staff-patient-meta">{pausedStepLabel(row)}</span>
+                            {(() => {
+                              const pr = pausedProgress(row)
+                              const w = waitingSince(row)
+                              return (
+                                <span className="staff-patient-tags">
+                                  {pr.benefit && <span className="spt-chip spt-benefit">{pr.benefit}</span>}
+                                  <span
+                                    className="spt-chip spt-progress"
+                                    title={pr.total ? `${pr.done} of ${pr.total} steps done` : 'No benefit chosen yet'}
+                                  >
+                                    <span className="spt-bar" aria-hidden="true">
+                                      <b style={{ width: `${pr.pct}%` }} />
+                                    </span>
+                                    {pr.pct}% done
+                                  </span>
+                                  <span
+                                    className={`spt-chip spt-wait${w.days >= 7 ? ' spt-wait-high' : w.days >= 3 ? ' spt-wait-mid' : ''}`}
+                                    title={w.startedLabel ? `Started ${w.startedLabel}` : undefined}
+                                  >
+                                    ⏱ Waiting {w.label}
+                                  </span>
+                                </span>
+                              )
+                            })()}
                             <span className="staff-patient-resume-hint">
                               Continue where left off
                               {row.updatedAt

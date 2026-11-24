@@ -7268,3 +7268,10 @@ img, svg, video {
   .lg-brand { margin-bottom: 20px; }
   .lg-title { font-size: 1.7rem; }
 }
+
+/* v3.5: benefit filter on the staff paused list */
+.paused-program-select { height: 38px; min-width: 190px; max-width: 280px; padding: 0 10px; border: 1px solid var(--border, #d0d9e8); border-radius: 8px; font-size: 0.88rem; background: #fff; }
+@media (max-width: 640px) {
+  .paused-program-label { flex: 1 1 100%; }
+  .paused-program-select { max-width: none; width: 100%; }
+}

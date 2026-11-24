@@ -751,6 +751,7 @@ export default function BenefitsApp({
   const [startedAt, setStartedAt] = useState<string | null>(null)
   const [paused, setPaused] = useState<BenefitsSession[]>([])
   const [pausedSearch, setPausedSearch] = useState('')
+  const [pausedProgram, setPausedProgram] = useState('') // '' = all benefits, '__none' = not chosen yet
   const [pausedDateFrom, setPausedDateFrom] = useState('')
   const [pausedDateTo, setPausedDateTo] = useState('')
   const [sessionMsg, setSessionMsg] = useState<string | null>(null)
@@ -808,6 +809,9 @@ export default function BenefitsApp({
     const fromMs = pausedDateFrom ? new Date(pausedDateFrom + 'T00:00:00').getTime() : null
     const toMs = pausedDateTo ? new Date(pausedDateTo + 'T23:59:59.999').getTime() : null
     return paused.filter((row) => {
+      if (pausedProgram === '__none') {
+        if (row.snapshot.programId) return false
+      } else if (pausedProgram && row.snapshot.programId !== pausedProgram) return false
       if (q) {
         const name = (row.patientName || '').toLowerCase()
         const meta = pausedStepLabel(row).toLowerCase()
@@ -818,7 +822,28 @@ export default function BenefitsApp({
       if (toMs !== null && Number.isFinite(toMs) && t > toMs) return false
       return true
     })
-  }, [paused, pausedSearch, pausedDateFrom, pausedDateTo])
+  }, [paused, pausedSearch, pausedProgram, pausedDateFrom, pausedDateTo])
+
+  /** Benefits that currently have ongoing patients, with how many each. */
+  const pausedProgramOptions = useMemo(() => {
+    const counts = new Map<string, { name: string; n: number }>()
+    let none = 0
+    for (const row of paused) {
+      const id = row.snapshot.programId
+      if (!id) {
+        none += 1
+        continue
+      }
+      const name = row.snapshot.programName || PROGRAMS.find((x) => x.id === id)?.name || id
+      const cur = counts.get(id)
+      if (cur) cur.n += 1
+      else counts.set(id, { name, n: 1 })
+    }
+    const list = [...counts.entries()]
+      .map(([id, v]) => ({ id, name: v.name, n: v.n }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    return { list, none }
+  }, [paused])
 
 
   /** Inter Global Referral steps filtered by entry + self-conduction branch */
@@ -1843,6 +1868,25 @@ The finished record is removed and the patient goes back to the last step. Finis
                     onChange={(e) => setPausedSearch(e.target.value)}
                     aria-label="Search paused patients by name"
                   />
+                  <label className="paused-date-label paused-program-label">
+                    <span>Benefit</span>
+                    <select
+                      className="paused-program-select"
+                      value={pausedProgram}
+                      onChange={(e) => setPausedProgram(e.target.value)}
+                      aria-label="Filter paused patients by benefit"
+                    >
+                      <option value="">All benefits ({paused.length})</option>
+                      {pausedProgramOptions.list.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name} ({o.n})
+                        </option>
+                      ))}
+                      {pausedProgramOptions.none > 0 && (
+                        <option value="__none">No benefit chosen yet ({pausedProgramOptions.none})</option>
+                      )}
+                    </select>
+                  </label>
                   <div className="paused-date-filters">
                     <label className="paused-date-label">
                       <span>From</span>
@@ -1862,12 +1906,13 @@ The finished record is removed and the patient goes back to the last step. Finis
                         aria-label="Paused to date"
                       />
                     </label>
-                    {(pausedSearch || pausedDateFrom || pausedDateTo) && (
+                    {(pausedSearch || pausedProgram || pausedDateFrom || pausedDateTo) && (
                       <button
                         type="button"
                         className="btn btn-outline paused-clear-filters"
                         onClick={() => {
                           setPausedSearch('')
+                          setPausedProgram('')
                           setPausedDateFrom('')
                           setPausedDateTo('')
                         }}
@@ -1884,7 +1929,7 @@ The finished record is removed and the patient goes back to the last step. Finis
                   No paused patients. Progress is kept when you Pause &amp; save.
                 </p>
               ) : filteredPaused.length === 0 ? (
-                <p className="session-empty">No paused patients match your search or date filter.</p>
+                <p className="session-empty">No paused patients match your search, benefit or date filter.</p>
               ) : (
                 <div className="staff-patient-table-wrap">
                   <table className="staff-patient-table">

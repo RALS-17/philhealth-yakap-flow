@@ -27,16 +27,8 @@ export type BranchDef = {
   features: Record<string, boolean>
 }
 
+/** The order here is the order shown on the home page. */
 export const BRANCHES: BranchDef[] = [
-  {
-    code: 'gcmcl',
-    slug: 'cabuyao',
-    name: 'Global Care Cabuyao',
-    heroImage: 'login-cabuyao.jpg',
-    supabaseUrl: import.meta.env.VITE_GCMCL_SUPABASE_URL as string | undefined,
-    supabaseAnonKey: import.meta.env.VITE_GCMCL_SUPABASE_ANON_KEY as string | undefined,
-    features: {},
-  },
   {
     code: 'gcmcc',
     slug: 'canlubang',
@@ -46,7 +38,23 @@ export const BRANCHES: BranchDef[] = [
     supabaseAnonKey: import.meta.env.VITE_GCMCC_SUPABASE_ANON_KEY as string | undefined,
     features: {},
   },
+  {
+    code: 'gcmcl',
+    slug: 'cabuyao',
+    name: 'Global Care Cabuyao',
+    heroImage: 'login-cabuyao.jpg',
+    supabaseUrl: import.meta.env.VITE_GCMCL_SUPABASE_URL as string | undefined,
+    supabaseAnonKey: import.meta.env.VITE_GCMCL_SUPABASE_ANON_KEY as string | undefined,
+    features: {},
+  },
   // Later: gcmct (talisay), gcmcb (bay), gcci (cancer-institute)
+]
+
+/** Branches shown on the home page as "Coming soon" until they are added above. */
+export const COMING_SOON_BRANCHES: { code: string; name: string; heroImage?: string }[] = [
+  { code: 'gcmct', name: 'Global Care Talisay', heroImage: 'login-talisay.jpg' },
+  { code: 'gcmcb', name: 'Global Care Bay', heroImage: 'login-bay.jpg' },
+  { code: 'gcci', name: 'Global Care Cancer Institute', heroImage: 'login-cancer-institute.jpg' },
 ]
 
 /** Path of the site inside the host (Vite "base"), without a trailing slash. */

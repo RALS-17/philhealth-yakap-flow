@@ -2,6 +2,8 @@ import { StrictMode, useEffect, useRef, useState, FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import BenefitsApp from './BenefitsApp'
 import BenefitsDashboard from './BenefitsDashboard'
+import { AppSkeleton } from './Skeletons'
+import { clearAllViewState, readRole, rememberRole } from './lib/viewState'
 import {
   loginBenefits,
   logoutBenefits,
@@ -517,7 +519,9 @@ function Root() {
     if (!session) return
     const want = hashFor(session)
     const fix = () => {
-      if (window.location.hash.replace(/^#\/?/, '') !== want) {
+      // "#benefits-monitor/insights" is fine: the part after the slash is the page the user is on.
+      const h = window.location.hash.replace(/^#\/?/, '')
+      if (h !== want && !h.startsWith(`${want}/`)) {
         window.location.hash = `#${want}`
       }
     }
@@ -526,7 +530,15 @@ function Root() {
     return () => window.removeEventListener('hashchange', fix)
   }, [session])
 
+  // Remember which kind of screen to show as a skeleton next time; forget everything when signed out.
+  useEffect(() => {
+    if (booting) return
+    if (session) rememberRole(session.role === 'admin' ? 'admin' : 'staff')
+    else clearAllViewState()
+  }, [session, booting])
+
   const handleLogout = () => {
+    clearAllViewState()
     void logoutBenefits().then(() => {
       setSession(null)
       window.location.hash = '#/'
@@ -534,14 +546,7 @@ function Root() {
   }
 
   if (booting) {
-    return (
-      <div className="auth-shell">
-        <div className="auth-shell-bg" aria-hidden="true" />
-        <div className="auth-card" role="status">
-          <p className="auth-card-sub">Loading…</p>
-        </div>
-      </div>
-    )
+    return <AppSkeleton kind={readRole()} />
   }
 
   if (!session) {

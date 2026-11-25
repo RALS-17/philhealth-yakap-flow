@@ -23,6 +23,8 @@ import {
   type BenefitsSnapshot,
 } from './lib/benefitsStore'
 import SyncBadge from './SyncBadge'
+import { PausedListSkeleton } from './Skeletons'
+import { readView, writeView } from './lib/viewState'
 import { EGAMOT_54_BY_CATEGORY, GAMOT_21_BY_CATEGORY } from './lib/gamotLists'
 
 type PayType = 'cash' | 'hmo' | null
@@ -757,23 +759,64 @@ type Props = {
   siteName?: string
 }
 
+/**
+ * What the staff member is in the middle of. Kept in the tab (sessionStorage) so a refresh
+ * puts them back on the same screen and step, instead of the start page.
+ */
+type StaffView = {
+  v: 1
+  screen: Screen
+  payType: PayType
+  directAdmission: boolean
+  patientName: string
+  nameInput: string
+  programId: string | null
+  stepIndex: number
+  path: string[]
+  sessionId: string | null
+  startedAt: string | null
+  oecbView: NavFrame['oecbView']
+  oecbTab: NavFrame['oecbTab']
+  igrEntry: NavFrame['igrEntry']
+  igrSelfConduction: NavFrame['igrSelfConduction']
+  showGamotList: NavFrame['showGamotList']
+  cancerScreenType: NavFrame['cancerScreenType']
+  cancerHowToIndex: number | null
+  navStack: NavFrame[]
+  programSearch: string
+}
+
+const RESTORABLE_SCREENS: Screen[] = ['entry-options', 'hmo-guide', 'name', 'programs', 'steps']
+
+function sanitizeStaffView(v: StaffView | null): StaffView | null {
+  if (!v || v.v !== 1 || !RESTORABLE_SCREENS.includes(v.screen)) return null
+  if (v.programId && !PROGRAMS.some((p) => p.id === v.programId)) return { ...v, programId: null, screen: 'programs' }
+  if (v.screen === 'steps' && !v.programId) return { ...v, screen: 'programs' }
+  if (!Array.isArray(v.path) || !v.path.every((x) => typeof x === 'string')) return null
+  if (!Array.isArray(v.navStack)) return { ...v, navStack: [] }
+  return v
+}
+
 export default function BenefitsApp({
   onLogout,
   staffEmail,
   siteCode = 'gcmcc',
   siteName = 'Global Care',
 }: Props) {
-  const [screen, setScreen] = useState<Screen>('pay')
-  const [payType, setPayType] = useState<PayType>(null)
-  const [directAdmission, setDirectAdmission] = useState(false)
-  const [patientName, setPatientName] = useState('')
-  const [nameInput, setNameInput] = useState('')
-  const [programId, setProgramId] = useState<string | null>(null)
-  const [stepIndex, setStepIndex] = useState(0)
-  const [path, setPath] = useState<string[]>(['Start'])
-  const [sessionId, setSessionId] = useState<string | null>(null)
-  const [startedAt, setStartedAt] = useState<string | null>(null)
+  const viewKey = `staff:${siteCode}:${(staffEmail || '').toLowerCase()}`
+  const [restored] = useState<StaffView | null>(() => sanitizeStaffView(readView<StaffView>(viewKey)))
+  const [screen, setScreen] = useState<Screen>(restored?.screen ?? 'pay')
+  const [payType, setPayType] = useState<PayType>(restored?.payType ?? null)
+  const [directAdmission, setDirectAdmission] = useState(restored?.directAdmission ?? false)
+  const [patientName, setPatientName] = useState(restored?.patientName ?? '')
+  const [nameInput, setNameInput] = useState(restored?.nameInput ?? '')
+  const [programId, setProgramId] = useState<string | null>(restored?.programId ?? null)
+  const [stepIndex, setStepIndex] = useState(restored?.stepIndex ?? 0)
+  const [path, setPath] = useState<string[]>(restored?.path ?? ['Start'])
+  const [sessionId, setSessionId] = useState<string | null>(restored?.sessionId ?? null)
+  const [startedAt, setStartedAt] = useState<string | null>(restored?.startedAt ?? null)
   const [paused, setPaused] = useState<BenefitsSession[]>([])
+  const [pausedLoading, setPausedLoading] = useState(true)
   const [pausedSearch, setPausedSearch] = useState('')
   const [pausedProgram, setPausedProgram] = useState('') // '' = all benefits, '__none' = not chosen yet
   const [pausedDateFrom, setPausedDateFrom] = useState('')
@@ -781,13 +824,13 @@ export default function BenefitsApp({
   const [sessionMsg, setSessionMsg] = useState<string | null>(null)
   const [staffMenuOpen, setStaffMenuOpen] = useState(false)
   const finishingRef = useRef(false)
-  const [oecbView, setOecbView] = useState<'overview' | 'tables' | 'coordination'>('overview')
-  const [oecbTab, setOecbTab] = useState<'overview' | 'exclusions' | 'groups' | 'covered' | 'pathways'>('overview')
+  const [oecbView, setOecbView] = useState<'overview' | 'tables' | 'coordination'>(restored?.oecbView ?? 'overview')
+  const [oecbTab, setOecbTab] = useState<'overview' | 'exclusions' | 'groups' | 'covered' | 'pathways'>(restored?.oecbTab ?? 'overview')
   /** Inter Global Referral: entry type + OPD self-conduction branch */
-  const [igrEntry, setIgrEntry] = useState<'inpatient' | 'er' | 'opd' | null>(null)
-  const [igrSelfConduction, setIgrSelfConduction] = useState<'yes' | 'no' | null>(null)
+  const [igrEntry, setIgrEntry] = useState<'inpatient' | 'er' | 'opd' | null>(restored?.igrEntry ?? null)
+  const [igrSelfConduction, setIgrSelfConduction] = useState<'yes' | 'no' | null>(restored?.igrSelfConduction ?? null)
   /** YAKAP step 5: show Gamot medicine lists (same as flow guide) */
-  const [showGamotList, setShowGamotList] = useState<null | 'picker' | '54' | '21'>(null)
+  const [showGamotList, setShowGamotList] = useState<null | 'picker' | '54' | '21'>(restored?.showGamotList ?? null)
   const [cancerScreenType, setCancerScreenType] = useState<
     | 'breast'
     | 'cervical'
@@ -795,10 +838,10 @@ export default function BenefitsApp({
     | 'prostate'
     | FreeCancerScreenId
     | null
-  >(null)
+  >(restored?.cancerScreenType ?? null)
   /** When set, user is in Free Cancer Screening “How to avail” steps */
-  const [cancerHowToIndex, setCancerHowToIndex] = useState<number | null>(null)
-  const [navStack, setNavStack] = useState<NavFrame[]>([])
+  const [cancerHowToIndex, setCancerHowToIndex] = useState<number | null>(restored?.cancerHowToIndex ?? null)
+  const [navStack, setNavStack] = useState<NavFrame[]>(restored?.navStack ?? [])
   const [offlineBanner, setOfflineBanner] = useState<string | null>(null)
   const [confirmModal, setConfirmModal] = useState<{
     title: string
@@ -809,7 +852,7 @@ export default function BenefitsApp({
   } | null>(null)
   const [infoModal, setInfoModal] = useState<string | null>(null)
   const [cancelModal, setCancelModal] = useState<{ id: string; label: string; reason: string; note: string } | null>(null)
-  const [programSearch, setProgramSearch] = useState('')
+  const [programSearch, setProgramSearch] = useState(restored?.programSearch ?? '')
   const [recentIds, setRecentIds] = useState<string[]>(() => readRecentPrograms(siteCode))
   const [recentDone, setRecentDone] = useState<BenefitsCompletion[]>([])
   const [lastCompleted, setLastCompleted] = useState<BenefitsCompletion | null>(null)
@@ -916,7 +959,26 @@ export default function BenefitsApp({
   const refreshPaused = useCallback(async () => {
     const rows = await listBenefitsSessions(siteCode)
     setPaused(rows)
+    setPausedLoading(false)
   }, [siteCode])
+
+  // Remember the screen and step, so a refresh lands on the same place (cleared on the start / done screens).
+  useEffect(() => {
+    if (screen === 'pay' || screen === 'done') {
+      writeView(viewKey, null)
+      return
+    }
+    const view: StaffView = {
+      v: 1, screen, payType, directAdmission, patientName, nameInput, programId, stepIndex, path, sessionId,
+      startedAt, oecbView, oecbTab, igrEntry, igrSelfConduction, showGamotList, cancerScreenType,
+      cancerHowToIndex, navStack, programSearch,
+    }
+    writeView(viewKey, view)
+  }, [
+    viewKey, screen, payType, directAdmission, patientName, nameInput, programId, stepIndex, path, sessionId,
+    startedAt, oecbView, oecbTab, igrEntry, igrSelfConduction, showGamotList, cancerScreenType,
+    cancerHowToIndex, navStack, programSearch,
+  ])
 
   useEffect(() => {
     void refreshPaused()
@@ -1948,7 +2010,9 @@ The finished record is removed and the patient goes back to the last step. Finis
                 </div>
               )}
 
-              {paused.length === 0 ? (
+              {pausedLoading ? (
+                <PausedListSkeleton />
+              ) : paused.length === 0 ? (
                 <p className="session-empty">
                   No paused patients. Progress is kept when you Pause &amp; save.
                 </p>

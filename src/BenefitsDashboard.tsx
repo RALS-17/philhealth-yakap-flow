@@ -1,3 +1,5 @@
+import { BenefitsPageSkeleton } from './Skeletons'
+import { readView, writeView } from './lib/viewState'
 import {
   useCallback,
   useEffect,
@@ -50,6 +52,14 @@ type Props = {
 }
 
 type AdminPage = 'dashboard' | 'patients' | 'insights' | 'activity' | 'users'
+const ADMIN_PAGES: AdminPage[] = ['dashboard', 'patients', 'insights', 'activity', 'users']
+
+/** The page is kept in the address, e.g. #benefits-monitor/patients/done, so a refresh stays put. */
+function readAdminRoute(): { page: AdminPage; tab: 'ongoing' | 'done' } {
+  const parts = window.location.hash.replace(/^#\/?/, '').split('/')
+  const page = ADMIN_PAGES.includes(parts[1] as AdminPage) ? (parts[1] as AdminPage) : 'dashboard'
+  return { page, tab: parts[2] === 'done' ? 'done' : 'ongoing' }
+}
 
 const LIST_BATCH = 15
 const LEGEND_SLOTS = 5
@@ -97,6 +107,28 @@ type Period =
   | { mode: 'range'; from: string; to: string; preset: '7' | '30' | 'custom' }
 
 type Span = DaySpan
+
+type SavedPeriod =
+  | { mode: 'all' }
+  | { mode: 'month'; month: string }
+  | { mode: 'range'; from: string; to: string; preset: '7' | '30' | 'custom' }
+
+function savePeriod(p: Period): SavedPeriod {
+  if (p.mode === 'month') return { mode: 'month', month: `${p.month.getFullYear()}-${String(p.month.getMonth() + 1).padStart(2, '0')}` }
+  return p
+}
+function restorePeriod(v: SavedPeriod | undefined): Period | null {
+  if (!v) return null
+  if (v.mode === 'all') return { mode: 'all' }
+  if (v.mode === 'month') {
+    const m = /^(\d{4})-(\d{2})$/.exec(v.month || '')
+    return m ? { mode: 'month', month: new Date(Number(m[1]), Number(m[2]) - 1, 1) } : null
+  }
+  if (v.mode === 'range' && /^\d{4}-\d{2}-\d{2}$/.test(v.from) && /^\d{4}-\d{2}-\d{2}$/.test(v.to)) {
+    return { mode: 'range', from: v.from, to: v.to, preset: v.preset === '7' || v.preset === '30' ? v.preset : 'custom' }
+  }
+  return null
+}
 
 const ymd = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -241,52 +273,6 @@ function PeriodFilter({
   )
 }
 
-function BenefitsPageSkeleton({ page }: { page: AdminPage }) {
-  return (
-    <div className="dash-content dash-skeleton benefits-page-skeleton" role="status" aria-busy="true" aria-label={`Loading ${page === 'patients' ? 'patient list' : page}`}>
-      {page !== 'patients' ? (
-        <>
-          <section className="dash-kpi-grid" aria-label="Loading key metrics">
-            {Array.from({ length: 4 }, (_, i) => (
-              <article className="dash-kpi sk-card" key={i}>
-                <div className="dash-kpi-body sk-lines">
-                  <span className="sk-line sk-line-sm" />
-                  <span className="sk-line sk-line-lg" />
-                  <span className="sk-line sk-line-md" />
-                </div>
-              </article>
-            ))}
-          </section>
-          <section className="benefits-skeleton-panels" aria-label="Loading dashboard charts">
-            {Array.from({ length: 4 }, (_, i) => (
-              <div className="benefits-skeleton-panel" key={i}>
-                <span className="sk-line sk-line-title" />
-                <div className="sk-bars-row">
-                  {[55, 85, 65, 95, 72].map((height, j) => (
-                    <span className="sk-bar" style={{ height: `${height}%` }} key={j} />
-                  ))}
-                </div>
-                <span className="sk-line sk-line-md" />
-              </div>
-            ))}
-          </section>
-        </>
-      ) : (
-        <section className="dash-patient-section benefits-skeleton-table" aria-label="Loading patient records">
-          <div className="benefits-skeleton-table-head">
-            {Array.from({ length: 5 }, (_, i) => <span className="sk-line sk-line-md" key={i} />)}
-          </div>
-          {Array.from({ length: 9 }, (_, i) => (
-            <div className="sk-table-row" key={i}>
-              {Array.from({ length: 5 }, (_, j) => <span className="sk-line" key={j} />)}
-            </div>
-          ))}
-        </section>
-      )}
-    </div>
-  )
-}
-
 export default function BenefitsDashboard({
   onLogout,
   adminEmail,
@@ -301,9 +287,12 @@ export default function BenefitsDashboard({
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
-  const [adminPage, setAdminPage] = useState<AdminPage>('dashboard')
-  const [patientListTab, setPatientListTab] = useState<'ongoing' | 'done'>('ongoing')
-  const [listSearch, setListSearch] = useState('')
+  const [route0] = useState(readAdminRoute)
+  const [adminPage, setAdminPage] = useState<AdminPage>(route0.page)
+  const [patientListTab, setPatientListTab] = useState<'ongoing' | 'done'>(route0.tab)
+  const viewKey = `admin:${siteCode}`
+  const [saved0] = useState(() => readView<{ period?: SavedPeriod; compare?: boolean; search?: string }>(viewKey))
+  const [listSearch, setListSearch] = useState(saved0?.search ?? '')
   const [visibleOngoing, setVisibleOngoing] = useState(LIST_BATCH)
   const [visibleDone, setVisibleDone] = useState(LIST_BATCH)
   const tableScrollRef = useRef<HTMLDivElement>(null)
@@ -312,8 +301,29 @@ export default function BenefitsDashboard({
   const [events, setEvents] = useState<BenefitsEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [hasLoaded, setHasLoaded] = useState(false)
-  const [period, setPeriod] = useState<Period>(() => ({ mode: 'month', month: startOfMonth(new Date()) }))
-  const [compare, setCompare] = useState(true)
+  const [period, setPeriod] = useState<Period>(
+    () => restorePeriod(saved0?.period) ?? { mode: 'month', month: startOfMonth(new Date()) },
+  )
+  const [compare, setCompare] = useState(saved0?.compare ?? true)
+
+  // Keep the address in step with the page, and follow the Back / Forward buttons.
+  useEffect(() => {
+    const want = `#benefits-monitor/${adminPage}${adminPage === 'patients' ? `/${patientListTab}` : ''}`
+    if (window.location.hash !== want) window.location.hash = want
+  }, [adminPage, patientListTab])
+  useEffect(() => {
+    const onHash = () => {
+      const r = readAdminRoute()
+      setAdminPage(r.page)
+      setPatientListTab(r.tab)
+    }
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+  // Date filter, comparison switch and the patient-list search survive a refresh too.
+  useEffect(() => {
+    writeView(viewKey, { period: savePeriod(period), compare, search: listSearch })
+  }, [viewKey, period, compare, listSearch])
   const span = useMemo(() => periodSpan(period), [period])
   const prevSpan = useMemo(() => previousSpan(period, span), [period, span])
   const periodLabel = span ? spanText(span) : 'All months'

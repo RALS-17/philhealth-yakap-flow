@@ -1,3 +1,4 @@
+import { UsersSkeleton } from './Skeletons'
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import Icon from './AdminIcons'
 import {
@@ -247,7 +248,7 @@ export default function UsersAdmin({ siteName }: { siteName: string }) {
             {error && <p className="ux-error" role="alert">{error}</p>}
 
             {loading && users.length === 0 && !error ? (
-              <p className="dash-muted">Loading users…</p>
+              <UsersSkeleton />
             ) : (
               <ul className="ux-users">
                 {users.map((u) => (

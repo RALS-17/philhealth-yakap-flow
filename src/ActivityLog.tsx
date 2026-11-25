@@ -1,3 +1,4 @@
+import { ActivitySkeleton } from './Skeletons'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Icon from './AdminIcons'
 import { BenefitsAuditEntry, fetchBenefitsAudit } from './lib/benefitsStore'
@@ -174,7 +175,7 @@ export default function ActivityLog({ siteCode, siteName }: { siteCode: string; 
             ) : error ? (
               <p className="ux-error" role="alert">{error}</p>
             ) : loading && rows.length === 0 ? (
-              <p className="dash-muted">Loading activity…</p>
+              <ActivitySkeleton />
             ) : groups.length === 0 ? (
               <p className="dash-muted">
                 {rows.length === 0

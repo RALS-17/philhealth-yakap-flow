@@ -87,6 +87,36 @@ export async function restoreBenefitsSession(): Promise<BenefitsUser | null> {
   }
 }
 
+/**
+ * Asks the server whether this login is still good. A password reset (or removing the user)
+ * ends every login on the server; the browser only finds out here.
+ * Network trouble is "unknown" — the person stays signed in while offline.
+ */
+export async function checkBenefitsSession(): Promise<'valid' | 'revoked' | 'unknown'> {
+  if (!supabase) return 'unknown'
+  try {
+    const { data } = await supabase.auth.getSession()
+    if (!data.session) return 'revoked'
+    const { data: u, error } = await supabase.auth.getUser()
+    if (!error && u?.user) return 'valid'
+    const e = error as { status?: number; code?: string; message?: string } | null
+    const status = e?.status ?? 0
+    const code = e?.code ?? ''
+    if (
+      status === 401 || status === 403 || status === 404 ||
+      /session_not_found|user_not_found|bad_jwt|refresh_token/i.test(code) ||
+      /session.*(not found|missing)|invalid (jwt|refresh)|user.*not found/i.test(e?.message ?? '')
+    ) {
+      // Drop the dead login from this browser only (unsynced work stays queued).
+      try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* ignore */ }
+      return 'revoked'
+    }
+    return 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
 /** Calls back when the login ends (logout, or the refresh token is no longer valid). */
 export function onBenefitsSignedOut(cb: () => void): () => void {
   if (!supabase) return () => {}

@@ -9,6 +9,7 @@ import {
   logoutBenefits,
   restoreBenefitsSession,
   onBenefitsSignedOut,
+  checkBenefitsSession,
   type BenefitsUser,
 } from './lib/benefitsAuth'
 import { ACTIVE_BRANCH, BRANCHES, BRANCH_NAME, COMING_SOON_BRANCHES, branchPath } from './lib/branchConfig'
@@ -20,10 +21,10 @@ import './index.css'
  * (The old flow-guide App / Dashboard / lib/auth.ts are no longer loaded.)
  */
 
-function LoginScreen({ onLogin }: { onLogin: (u: BenefitsUser) => void }) {
+function LoginScreen({ onLogin, notice }: { onLogin: (u: BenefitsUser) => void; notice?: string | null }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(notice ?? null)
   const [showPass, setShowPass] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
@@ -493,14 +494,24 @@ function hashFor(user: BenefitsUser): string {
   return user.role === 'admin' ? 'benefits-monitor' : 'benefits'
 }
 
+const KICKED = 'Your login ended because the password was changed or the account was updated. Please sign in again.'
+
 function Root() {
   const [session, setSession] = useState<BenefitsUser | null>(null)
   const [booting, setBooting] = useState(true)
+  const [kickedMsg, setKickedMsg] = useState<string | null>(null)
 
   // Restore a valid login after refresh, and react when the login expires / is revoked.
   useEffect(() => {
     let alive = true
-    void restoreBenefitsSession().then((u) => {
+    void restoreBenefitsSession().then(async (u) => {
+      if (!alive) return
+      // Make sure the server still accepts this login (a password reset ends it).
+      if (u && (await checkBenefitsSession()) === 'revoked') {
+        if (!alive) return
+        setKickedMsg(KICKED)
+        u = null
+      }
       if (!alive) return
       setSession(u)
       setBooting(false)
@@ -513,6 +524,32 @@ function Root() {
       off()
     }
   }, [])
+
+  // While signed in, re-check with the server every minute and whenever the tab is opened again,
+  // so a password reset signs everyone out (admins included) within about a minute.
+  useEffect(() => {
+    if (!session) return
+    let busy = false
+    const verify = async () => {
+      if (busy) return
+      busy = true
+      const r = await checkBenefitsSession()
+      busy = false
+      if (r === 'revoked') {
+        setKickedMsg(KICKED)
+        setSession(null)
+      }
+    }
+    const timer = window.setInterval(verify, 60_000)
+    const onVisible = () => { if (document.visibilityState === 'visible') void verify() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [session])
 
   // The URL hash is cosmetic only — what you can see is decided by your server-side role.
   useEffect(() => {
@@ -550,7 +587,7 @@ function Root() {
   }
 
   if (!session) {
-    return <LoginScreen onLogin={(u) => setSession(u)} />
+    return <LoginScreen onLogin={(u) => { setKickedMsg(null); setSession(u) }} notice={kickedMsg} />
   }
 
   if (session.role === 'admin') {
